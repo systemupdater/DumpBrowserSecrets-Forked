@@ -147,7 +147,6 @@ namespace Obf {
         uint8_t m_pbEncrypted[N];
 
     public:
-        // Runtime encryption (still hidden in binary - encrypted at startup)
         template <typename... Args>
         constexpr ObfuscatedBytes(Args... args) : m_pbEncrypted{} {
             uint8_t temp[N] = { static_cast<uint8_t>(args)... };

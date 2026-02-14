@@ -3,10 +3,12 @@
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)Obfuscate.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)Common.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)Structures.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)FetchSecretFiles.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)Common.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)ApiHashing.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)Debug.h" />

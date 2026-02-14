@@ -1,7 +1,7 @@
 #include "Headers.h"
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-===-==-==-==-==-==-==-==-==-==-===-==-==-==-==-==-==-==-==-==-==
-// Extern Global (Defined in 'ResolvePrgrmAPIs.cpp')
+// Extern Global (Defined in 'Main.cpp')
 
 extern DINMCLY_RSOLVD_FUNCTIONS g_ResolvedFunctions;
 
@@ -74,7 +74,6 @@ static LPWSTR GenerateSpoofedStringW(IN SIZE_T cbBaseLength)
     return szSpoofedStr;
 }
 
-
 LPWSTR GenerateFakeCommandLine(IN LPCWSTR szRealCommandLine, IN LPCWSTR szProcessPath)
 {
     SIZE_T  cbRealLen       = 0x00,
@@ -116,6 +115,29 @@ LPWSTR GenerateFakeCommandLine(IN LPCWSTR szRealCommandLine, IN LPCWSTR szProces
     HeapFree(GetProcessHeap(), 0, szSpoofedArgs);
 
     return szFakeCmd;
+}
+
+
+BOOL GenerateRandomBytes(OUT PBYTE pbBuffer, IN DWORD dwLength)
+{
+    DWORD   dwSeed      = 0,
+            dwOffset    = 0;
+
+    if (!pbBuffer || dwLength == 0)
+        return FALSE;
+
+    dwSeed = (DWORD)(__rdtsc() ^ GetTickCount64());
+
+    for (dwOffset = 0; dwOffset < dwLength; dwOffset++)
+    {
+        if ((dwOffset & 0xFF) == 0)
+            dwSeed ^= (DWORD)__rdtsc();
+
+        dwSeed = dwSeed * 1103515245 + 12345;
+        pbBuffer[dwOffset] = (BYTE)(dwSeed >> 16);
+    }
+
+    return TRUE;
 }
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==

@@ -20,6 +20,11 @@
     <DebugSymbols>true</DebugSymbols>
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'DebuggingRelease' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+    <OutputPath>bin\DebuggingRelease\</OutputPath>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Fnv1aHasher.py" />
   </ItemGroup>

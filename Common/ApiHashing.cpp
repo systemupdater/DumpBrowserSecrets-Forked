@@ -2,7 +2,7 @@
     All ResolveApi* Functions/Logic are Refactored From: https://github.com/ajkhoury/ApiSet 
 */
 
-#include "Headers.h"
+#include "Common.h"
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -1190,9 +1190,18 @@ DWORD WINAPI HashStringFnv1aCharW(IN LPCWSTR pwszString, IN BOOL bCaseInsensitiv
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
+#define HASH_STRING_A(STR)       HashStringFnv1aCharA((LPCSTR)(STR), FALSE)
+#define HASH_STRING_W(STR)       HashStringFnv1aCharW((LPCWSTR)(STR), FALSE)
+
+#define HASH_STRING_A_CI(STR)    HashStringFnv1aCharA((LPCSTR)(STR), TRUE)
+#define HASH_STRING_W_CI(STR)    HashStringFnv1aCharW((LPCWSTR)(STR), TRUE)
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+
 #pragma region CUSTOM_GETAPI_FUNCTIONS
 
-static HMODULE GetModuleHandleH(IN DWORD dwModuleNameHash) 
+HMODULE GetModuleHandleH(IN DWORD dwModuleNameHash) 
 {
     PPEB                        pPeb            = NtCurrentPeb();
     PPEB_LDR_DATA               pLdr            = NULL;
@@ -1225,7 +1234,7 @@ static HMODULE GetModuleHandleH(IN DWORD dwModuleNameHash)
 	return NULL;
 }
 
-static FARPROC GetProcAddressH(IN HMODULE hModule, IN DWORD dwProcNameHash)
+FARPROC GetProcAddressH(IN HMODULE hModule, IN DWORD dwProcNameHash)
 {
 
     PIMAGE_DOS_HEADER           pDosImgHdr          = NULL;
@@ -1380,66 +1389,3 @@ static FARPROC GetProcAddressH(IN HMODULE hModule, IN DWORD dwProcNameHash)
 }
 
 #pragma endregion
-
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
-// Global Variables
-
-DINMCLY_RSOLVD_FUNCTIONS g_ResolvedFunctions = { 0 };
-
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
-
-BOOL InitializeAllDynamicFunctions()
-{
-    HMODULE     hNtdllModule        = NULL, 
-                hKernel32Module     = NULL;
-    SIZE_T      cbElementCount      = 0x00,
-                cbFailedElement     = 0x00;
-    PVOID*      ppCurrentElement    = NULL;
-    
-    if (g_ResolvedFunctions.pInitialized) return TRUE;
-
-    RtlSecureZeroMemory(&g_ResolvedFunctions, sizeof(DINMCLY_RSOLVD_FUNCTIONS));
-    
-    if (!(hNtdllModule = GetModuleHandleH(FNV1A_NTDLLDLL)) || !(hKernel32Module = GetModuleHandleH(FNV1A_KERNEL32DLL)))
-    {
-        DBGA("[!] GetModuleHandleH Failed To Resolve Modules");
-        return FALSE;
-    }
-
-    // CRSS Functions
-    g_ResolvedFunctions.pBasepConstructSxsCreateProcessMessage        = (fnBasepConstructSxsCreateProcessMessage)GetProcAddressH(hKernel32Module, FNV1A_BASEPCONSTRUCTSXSCREATEPROCESSMESSAGE);
-    g_ResolvedFunctions.pCsrCaptureMessageMultiUnicodeStringsInPlace  = (fnCsrCaptureMessageMultiUnicodeStringsInPlace)GetProcAddressH(hNtdllModule, FNV1A_CSRCAPTUREMESSAGEMULTIUNICODESTRINGSINPLACE);
-    g_ResolvedFunctions.pCsrClientCallServer                          = (fnCsrClientCallServer)GetProcAddressH(hNtdllModule, FNV1A_CSRCLIENTCALLSERVER);
-    
-    // NTAPI Functions
-    g_ResolvedFunctions.pNtCreateUserProcess                          = (fnNtCreateUserProcess)GetProcAddressH(hNtdllModule, FNV1A_NTCREATEUSERPROCESS);
-    g_ResolvedFunctions.pRtlCreateProcessParametersEx                 = (fnRtlCreateProcessParametersEx)GetProcAddressH(hNtdllModule, FNV1A_RTLCREATEPROCESSPARAMETERSEX);
-    g_ResolvedFunctions.pRtlDestroyProcessParameters                  = (fnRtlDestroyProcessParameters)GetProcAddressH(hNtdllModule, FNV1A_RTLDESTROYPROCESSPARAMETERS);
-    g_ResolvedFunctions.pNtCreateDebugObject                          = (fnNtCreateDebugObject)GetProcAddressH(hNtdllModule, FNV1A_NTCREATEDEBUGOBJECT);
-    g_ResolvedFunctions.pNtWaitForDebugEvent                          = (fnNtWaitForDebugEvent)GetProcAddressH(hNtdllModule, FNV1A_NTWAITFORDEBUGEVENT);
-    g_ResolvedFunctions.pNtDebugContinue                              = (fnNtDebugContinue)GetProcAddressH(hNtdllModule, FNV1A_NTDEBUGCONTINUE);
-    g_ResolvedFunctions.pNtRemoveProcessDebug                         = (fnNtRemoveProcessDebug)GetProcAddressH(hNtdllModule, FNV1A_NTREMOVEPROCESSDEBUG);
-    g_ResolvedFunctions.pNtQueryInformationProcess                    = (fnNtQueryInformationProcess)GetProcAddressH(hNtdllModule, FNV1A_NTQUERYINFORMATIONPROCESS);
-    g_ResolvedFunctions.pNtReadVirtualMemory                          = (fnNtReadVirtualMemory)GetProcAddressH(hNtdllModule, FNV1A_NTREADVIRTUALMEMORY);
-    g_ResolvedFunctions.pNtWriteVirtualMemory                         = (fnNtWriteVirtualMemory)GetProcAddressH(hNtdllModule, FNV1A_NTWRITEVIRTUALMEMORY);
-    g_ResolvedFunctions.pNtOpenProcessToken                           = (fnNtOpenProcessToken)GetProcAddressH(hNtdllModule, FNV1A_NTOPENPROCESSTOKEN);
-
-
-    // Validate all function pointers (skipping pInitialized)
-    cbElementCount      = (sizeof(DINMCLY_RSOLVD_FUNCTIONS) / sizeof(PVOID)) - 1;
-    ppCurrentElement    = (PVOID*)&g_ResolvedFunctions + 1;
-
-    for (SIZE_T i = 0; i < cbElementCount; i++)
-    {
-        if (ppCurrentElement[i] == NULL)
-        {
-            DBGA("[!] GetProcAddressH Failed For Function Of Index: %llu", i);
-            return FALSE;
-        }
-    }
-
-    g_ResolvedFunctions.pInitialized = (PVOID)TRUE;
-    return TRUE;
-}
-

