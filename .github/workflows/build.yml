@@ -15,11 +15,15 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1.1
 
-      - name: Build (x64 Release)
+      # Fix the post‑build copy error by creating the target folder in advance
+      - name: Create output directory
+        run: mkdir x64\Release
+
+      - name: Build solution (Release, x64)
         run: |
           msbuild DumpBrowserSecrets.sln /p:Configuration=Release /p:Platform=x64
 
-      - name: Upload EXE + DLL
+      - name: Upload EXE and DLL
         uses: actions/upload-artifact@v4
         with:
           name: DumpBrowserSecrets
