@@ -1,0 +1,28 @@
+name: Build DumpBrowserSecrets
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.1
+
+      - name: Build (x64 Release)
+        run: |
+          msbuild DumpBrowserSecrets.sln /p:Configuration=Release /p:Platform=x64
+
+      - name: Upload EXE + DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: DumpBrowserSecrets
+          path: |
+            x64/Release/DumpBrowserSecrets.exe
+            x64/Release/DllExtractChromiumSecrets.dll
